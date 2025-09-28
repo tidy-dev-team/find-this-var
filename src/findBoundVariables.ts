@@ -2,7 +2,7 @@
  * Finds all nodes in the document where a specific variable is bound/used
  */
 
-interface BoundNodeInfo {
+export interface BoundNodeInfo {
   node: SceneNode;
   boundProperties: string[];
   propertyPath: string;
@@ -144,11 +144,6 @@ export function findNodesWithBoundVariable(
 
     // If any properties are bound to this variable, add the node to results
     if (boundProperties.length > 0) {
-      console.log(
-        `✅ Found variable usage in: ${node.name || node.type} (${
-          node.type
-        }) - Properties: ${boundProperties.join(", ")}`
-      );
       boundNodes.push({
         node,
         boundProperties,
@@ -206,9 +201,6 @@ export function findNodesWithBoundVariable(
         // When componentsOnly is true, only start from components and instances
         const findComponentsInNode = (node: SceneNode): void => {
           if (node.type === "COMPONENT" || node.type === "INSTANCE") {
-            console.log(
-              `🏗️ Found component/instance to check: ${node.name || node.type}`
-            );
             checkNode(node);
           }
           // Continue searching for components in children
@@ -216,7 +208,6 @@ export function findNodesWithBoundVariable(
             node.children.forEach((child) => findComponentsInNode(child));
           }
         };
-
         page.children.forEach((child) => findComponentsInNode(child));
       } else {
         // Normal behavior - check all nodes

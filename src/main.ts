@@ -11,6 +11,7 @@ import {
   findNodesWithBoundVariable,
   getVariableUsageSummary,
 } from "./findBoundVariables";
+import { createResultTable, loadInterFont } from "./drawResultTable";
 
 export default function () {
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
@@ -296,87 +297,38 @@ export default function () {
 
   once<FindBoundNodesHandler>(
     "FIND_BOUND_NODES",
-    function (options: { variableIds: string[]; componentsOnly: boolean }) {
+    async function (options: {
+      variableIds: string[];
+      componentsOnly: boolean;
+    }) {
       try {
         const { variableIds, componentsOnly } = options;
+
+        // Load fonts before creating the table
+        await loadInterFont();
+
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
         );
-        console.log(`📋 Variable IDs: ${variableIds.join(", ")}`);
-        console.log(`🏗️ Components only: ${componentsOnly}`);
 
         const results = [];
 
         for (const variableId of variableIds) {
           try {
-            console.log(`🔎 Processing variable: ${variableId}`);
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              console.log(
-                `✅ Variable found: "${variable.name}" (${variable.resolvedType})`
-              );
               const boundNodes = findNodesWithBoundVariable(
                 variable,
                 componentsOnly
               );
               const summary = getVariableUsageSummary(variable, componentsOnly);
 
-              console.log(
-                `\n📌 Variable: "${variable.name}" (${variable.resolvedType})`
-              );
-              console.log(
-                `   Used in ${boundNodes.length} nodes${
-                  componentsOnly ? " (components only)" : ""
-                }`
-              );
-
-              if (boundNodes.length > 0) {
-                // Group nodes by page for better organization
-                const nodesByPage = boundNodes.reduce((acc, nodeInfo) => {
-                  if (!acc[nodeInfo.pageName]) {
-                    acc[nodeInfo.pageName] = [];
-                  }
-                  acc[nodeInfo.pageName].push(nodeInfo);
-                  return acc;
-                }, {} as Record<string, typeof boundNodes>);
-
-                console.log(
-                  `   Node types: ${Object.entries(summary.nodesByType)
-                    .map(([type, count]) => `${type}(${count})`)
-                    .join(", ")}`
-                );
-                console.log(
-                  `   Properties: ${Object.entries(summary.propertyUsage)
-                    .map(([prop, count]) => `${prop}(${count})`)
-                    .join(", ")}`
-                );
-                console.log(`   Pages: ${Object.keys(nodesByPage).join(", ")}`);
-
-                boundNodes.forEach(
-                  (
-                    { node, boundProperties, propertyPath, pageName },
-                    index
-                  ) => {
-                    console.log(
-                      `   ${index + 1}. ${node.name || node.type} (${
-                        node.type
-                      }) [Page: ${pageName}]`
-                    );
-                    console.log(
-                      `      Properties: ${boundProperties.join(", ")}`
-                    );
-                    console.log(`      Path: ${propertyPath}`);
-                  }
-                );
-
-                results.push({
-                  variable: variable.name,
-                  boundNodes: boundNodes.length,
-                  summary,
-                });
-              } else {
-                console.log(`   ⚠️  No nodes found using this variable`);
-              }
+              results.push({
+                variable,
+                boundNodes,
+                summary,
+                componentsOnly,
+              });
             } else {
               console.log(`❌ Variable with ID ${variableId} not found`);
             }
@@ -385,12 +337,18 @@ export default function () {
           }
         }
 
-        console.log(
-          `\n📊 Summary: Found ${results.reduce(
-            (total, r) => total + r.boundNodes,
-            0
-          )} total bound nodes across ${results.length} variables`
-        );
+        // Create visual table if we have results
+        if (results.length > 0) {
+          const resultTable = createResultTable(results);
+          console.log(
+            `📊 Created visual result table with ${results.reduce(
+              (total, r) => total + r.boundNodes.length,
+              0
+            )} total bound nodes across ${results.length} variables`
+          );
+        } else {
+          console.log(`⚠️ No results to display`);
+        }
       } catch (error) {
         console.error("❌ Error finding bound nodes:", error);
       }
