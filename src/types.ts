@@ -24,7 +24,9 @@ export interface ColorVariable {
   id: string;
   name: string;
   resolvedType: string;
-  valuesByMode: { [key: string]: RGBA };
+  valuesByMode: { [key: string]: RGBA | string };
+  isLocal: boolean;
+  libraryName?: string;
 }
 
 export interface RGBA {

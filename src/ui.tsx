@@ -56,14 +56,61 @@ function Plugin() {
     return `rgb(${r}, ${g}, ${b})`;
   };
 
-  const getColorPreview = (variable: ColorVariable): string => {
+  const getColorPreview = (
+    variable: ColorVariable
+  ): { color: string; isAlias: boolean } => {
     // Get the first mode's color value for preview
     const modeIds = Object.keys(variable.valuesByMode);
     if (modeIds.length > 0) {
       const firstModeValue = variable.valuesByMode[modeIds[0]];
-      return formatColor(firstModeValue);
+
+      // Check if it's an RGBA color
+      if (
+        typeof firstModeValue === "object" &&
+        firstModeValue !== null &&
+        "r" in firstModeValue
+      ) {
+        return {
+          color: formatColor(
+            firstModeValue as { r: number; g: number; b: number; a: number }
+          ),
+          isAlias: false,
+        };
+      }
+
+      // If it's a string (variable alias), return a default color but mark as alias
+      if (typeof firstModeValue === "string") {
+        return {
+          color: "#cccccc", // Light gray for aliases
+          isAlias: true,
+        };
+      }
     }
-    return "#000000";
+    return { color: "#000000", isAlias: false };
+  };
+
+  const getDisplayValue = (variable: ColorVariable): string => {
+    const modeIds = Object.keys(variable.valuesByMode);
+    if (modeIds.length > 0) {
+      const firstModeValue = variable.valuesByMode[modeIds[0]];
+
+      // Check if it's an RGBA color
+      if (
+        typeof firstModeValue === "object" &&
+        firstModeValue !== null &&
+        "r" in firstModeValue
+      ) {
+        return formatColor(
+          firstModeValue as { r: number; g: number; b: number; a: number }
+        );
+      }
+
+      // If it's a string (variable alias), return the string
+      if (typeof firstModeValue === "string") {
+        return firstModeValue;
+      }
+    }
+    return "No value";
   };
 
   return (
@@ -90,7 +137,8 @@ function Plugin() {
           <VerticalSpace space="small" />
           <div style={{ maxHeight: "300px", overflowY: "auto" }}>
             {colorVariables.map((variable) => {
-              const previewColor = getColorPreview(variable);
+              const preview = getColorPreview(variable);
+              const displayValue = getDisplayValue(variable);
               return (
                 <div
                   key={variable.id}
@@ -107,10 +155,14 @@ function Plugin() {
                     style={{
                       width: "20px",
                       height: "20px",
-                      backgroundColor: previewColor,
+                      backgroundColor: preview.color,
                       borderRadius: "3px",
                       marginRight: "8px",
                       border: "1px solid #ccc",
+                      // Add diagonal stripes pattern for aliases
+                      backgroundImage: preview.isAlias
+                        ? "repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)"
+                        : "none",
                     }}
                   ></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -124,6 +176,16 @@ function Plugin() {
                       }}
                     >
                       {variable.name}
+                      {!variable.isLocal && (
+                        <span style={{ color: "#888", fontWeight: "normal" }}>
+                          {" "}
+                          (external
+                          {variable.libraryName
+                            ? ` - ${variable.libraryName}`
+                            : ""}
+                          )
+                        </span>
+                      )}
                     </div>
                     <div
                       style={{
@@ -134,7 +196,7 @@ function Plugin() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {previewColor}
+                      {displayValue}
                     </div>
                   </div>
                 </div>
