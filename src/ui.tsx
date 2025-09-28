@@ -19,6 +19,7 @@ import {
   CreateRectanglesHandler,
   GetColorVariablesHandler,
   ColorVariablesResultHandler,
+  FindBoundNodesHandler,
   ColorVariable,
 } from "./types";
 
@@ -90,10 +91,14 @@ function Plugin() {
   );
 
   const handleGetSelected = useCallback(() => {
-    const selected = colorVariables.filter((v) => selectedVariables.has(v.id));
-    console.log("Selected variables:", selected);
-    // TODO: Implement action with selected variables
-  }, [colorVariables, selectedVariables]);
+    const selectedVariableIds = Array.from(selectedVariables);
+    if (selectedVariableIds.length > 0) {
+      console.log(
+        `🚀 Finding bound nodes for ${selectedVariableIds.length} selected variables...`
+      );
+      emit<FindBoundNodesHandler>("FIND_BOUND_NODES", selectedVariableIds);
+    }
+  }, [selectedVariables]);
 
   const isAllSelected =
     filteredVariables.length > 0 &&
@@ -340,7 +345,7 @@ function Plugin() {
             onClick={handleGetSelected}
             disabled={selectedVariables.size === 0}
           >
-            Get ({selectedVariables.size} selected)
+            Find Bound Nodes ({selectedVariables.size} selected)
           </Button>
           <VerticalSpace space="medium" />
         </div>

@@ -6,6 +6,7 @@ interface BoundNodeInfo {
   node: SceneNode;
   boundProperties: string[];
   propertyPath: string;
+  pageName: string;
 }
 
 /**
@@ -143,6 +144,7 @@ export function findNodesWithBoundVariable(
         node,
         boundProperties,
         propertyPath: getNodePath(node),
+        pageName: getNodePage(node),
       });
     }
 
@@ -150,6 +152,22 @@ export function findNodesWithBoundVariable(
     if ("children" in node && node.children) {
       node.children.forEach((child) => checkNode(child));
     }
+  }
+
+  /**
+   * Get the page name where a node is located
+   */
+  function getNodePage(node: SceneNode): string {
+    let currentNode: BaseNode | null = node;
+
+    while (currentNode && currentNode.parent) {
+      if (currentNode.parent.type === "PAGE") {
+        return currentNode.parent.name || "Unnamed Page";
+      }
+      currentNode = currentNode.parent;
+    }
+
+    return "Unknown Page";
   }
 
   /**
@@ -162,7 +180,8 @@ export function findNodesWithBoundVariable(
     while (
       currentNode &&
       currentNode.parent &&
-      currentNode.parent.type !== "DOCUMENT"
+      currentNode.parent.type !== "DOCUMENT" &&
+      currentNode.parent.type !== "PAGE"
     ) {
       path.unshift(currentNode.name || currentNode.type);
       currentNode = currentNode.parent;

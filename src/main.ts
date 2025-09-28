@@ -4,8 +4,13 @@ import {
   CloseHandler,
   CreateRectanglesHandler,
   GetColorVariablesHandler,
+  FindBoundNodesHandler,
   ColorVariable,
 } from "./types";
+import {
+  findNodesWithBoundVariable,
+  getVariableUsageSummary,
+} from "./findBoundVariables";
 
 export default function () {
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
@@ -159,6 +164,95 @@ export default function () {
       emit("COLOR_VARIABLES_RESULT", []);
     }
   });
+
+  once<FindBoundNodesHandler>(
+    "FIND_BOUND_NODES",
+    function (variableIds: string[]) {
+      try {
+        console.log(
+          `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
+        );
+
+        const results = [];
+
+        for (const variableId of variableIds) {
+          try {
+            const variable = figma.variables.getVariableById(variableId);
+            if (variable) {
+              const boundNodes = findNodesWithBoundVariable(variable);
+              const summary = getVariableUsageSummary(variable);
+
+              console.log(
+                `\n📌 Variable: "${variable.name}" (${variable.resolvedType})`
+              );
+              console.log(`   Used in ${boundNodes.length} nodes`);
+
+              if (boundNodes.length > 0) {
+                // Group nodes by page for better organization
+                const nodesByPage = boundNodes.reduce((acc, nodeInfo) => {
+                  if (!acc[nodeInfo.pageName]) {
+                    acc[nodeInfo.pageName] = [];
+                  }
+                  acc[nodeInfo.pageName].push(nodeInfo);
+                  return acc;
+                }, {} as Record<string, typeof boundNodes>);
+
+                console.log(
+                  `   Node types: ${Object.entries(summary.nodesByType)
+                    .map(([type, count]) => `${type}(${count})`)
+                    .join(", ")}`
+                );
+                console.log(
+                  `   Properties: ${Object.entries(summary.propertyUsage)
+                    .map(([prop, count]) => `${prop}(${count})`)
+                    .join(", ")}`
+                );
+                console.log(`   Pages: ${Object.keys(nodesByPage).join(", ")}`);
+
+                boundNodes.forEach(
+                  (
+                    { node, boundProperties, propertyPath, pageName },
+                    index
+                  ) => {
+                    console.log(
+                      `   ${index + 1}. ${node.name || node.type} (${
+                        node.type
+                      }) [Page: ${pageName}]`
+                    );
+                    console.log(
+                      `      Properties: ${boundProperties.join(", ")}`
+                    );
+                    console.log(`      Path: ${propertyPath}`);
+                  }
+                );
+
+                results.push({
+                  variable: variable.name,
+                  boundNodes: boundNodes.length,
+                  summary,
+                });
+              } else {
+                console.log(`   ⚠️  No nodes found using this variable`);
+              }
+            } else {
+              console.log(`❌ Variable with ID ${variableId} not found`);
+            }
+          } catch (error) {
+            console.error(`❌ Error processing variable ${variableId}:`, error);
+          }
+        }
+
+        console.log(
+          `\n📊 Summary: Found ${results.reduce(
+            (total, r) => total + r.boundNodes,
+            0
+          )} total bound nodes across ${results.length} variables`
+        );
+      } catch (error) {
+        console.error("❌ Error finding bound nodes:", error);
+      }
+    }
+  );
 
   once<CloseHandler>("CLOSE", function () {
     figma.closePlugin();
