@@ -11,9 +11,24 @@ import {
   findNodesWithBoundVariable,
   getVariableUsageSummary,
 } from "./findBoundVariables";
-import { createResultTable, loadInterFont } from "./drawResultTable";
+import {
+  createResultTable,
+  loadInterFont,
+  resetFonts,
+  handleNavigationClick,
+} from "./drawResultTable";
 
 export default function () {
+  // Handle selection changes for navigation clicks
+  figma.on("selectionchange", () => {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 1) {
+      const selectedNode = selection[0];
+      // Try to handle navigation click
+      handleNavigationClick(selectedNode);
+    }
+  });
+
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
     const nodes: Array<SceneNode> = [];
     for (let i = 0; i < count; i++) {
@@ -304,12 +319,19 @@ export default function () {
       try {
         const { variableIds, componentsOnly } = options;
 
-        // Load fonts before creating the table
-        await loadInterFont();
-
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
         );
+
+        // Load fonts with better error handling
+        try {
+          await loadInterFont();
+        } catch (fontError) {
+          console.warn(
+            "Font loading failed, continuing with defaults:",
+            fontError
+          );
+        }
 
         const results = [];
 
@@ -339,13 +361,24 @@ export default function () {
 
         // Create visual table if we have results
         if (results.length > 0) {
-          const resultTable = createResultTable(results);
-          console.log(
-            `📊 Created visual result table with ${results.reduce(
-              (total, r) => total + r.boundNodes.length,
-              0
-            )} total bound nodes across ${results.length} variables`
-          );
+          try {
+            const resultTable = createResultTable(results);
+            console.log(
+              `📊 Created visual result table with ${results.reduce(
+                (total, r) => total + r.boundNodes.length,
+                0
+              )} total bound nodes across ${results.length} variables`
+            );
+          } catch (tableError) {
+            console.error("❌ Error creating result table:", tableError);
+            // Fallback to console output
+            console.log("Falling back to console output:");
+            results.forEach((result) => {
+              console.log(
+                `Variable: ${result.variable.name} - ${result.boundNodes.length} nodes found`
+              );
+            });
+          }
         } else {
           console.log(`⚠️ No results to display`);
         }
