@@ -19,37 +19,63 @@ interface VariableResult {
 export function createResultTable(results: VariableResult[]): FrameNode {
   console.log(`🎨 Creating result table for ${results.length} variables...`);
 
-  // Create main container frame
-  const mainFrame = figma.createFrame();
-  mainFrame.name = `Variable Usage Results ${new Date().toLocaleTimeString()}`;
-  mainFrame.layoutMode = "VERTICAL";
-  mainFrame.primaryAxisSizingMode = "AUTO";
-  mainFrame.counterAxisSizingMode = "AUTO";
-  mainFrame.paddingTop = 24;
-  mainFrame.paddingBottom = 24;
-  mainFrame.paddingLeft = 24;
-  mainFrame.paddingRight = 24;
-  mainFrame.itemSpacing = 24;
-  mainFrame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
-  mainFrame.cornerRadius = 12;
+  try {
+    // Create main container frame
+    const mainFrame = figma.createFrame();
+    mainFrame.name = `Variable Usage Results ${new Date().toLocaleTimeString()}`;
+    mainFrame.layoutMode = "VERTICAL";
+    mainFrame.primaryAxisSizingMode = "AUTO";
+    mainFrame.counterAxisSizingMode = "AUTO";
+    mainFrame.paddingTop = 24;
+    mainFrame.paddingBottom = 24;
+    mainFrame.paddingLeft = 24;
+    mainFrame.paddingRight = 24;
+    mainFrame.itemSpacing = 24;
+    mainFrame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
+    mainFrame.cornerRadius = 12;
 
-  // Add to current page
-  figma.currentPage.appendChild(mainFrame);
+    // Add to current page
+    figma.currentPage.appendChild(mainFrame);
 
-  results.forEach((result, resultIndex) => {
-    const tableFrame = createSingleVariableTable(result, resultIndex);
-    mainFrame.appendChild(tableFrame);
-  });
+    // Process results with error handling for each variable
+    let successfulTables = 0;
+    results.forEach((result, resultIndex) => {
+      try {
+        console.log(
+          `Processing variable ${resultIndex + 1}/${results.length}: ${
+            result.variable.name
+          }`
+        );
+        const tableFrame = createSingleVariableTable(result, resultIndex);
+        mainFrame.appendChild(tableFrame);
+        successfulTables++;
+      } catch (error) {
+        console.error(
+          `Failed to create table for variable ${result.variable.name}:`,
+          error
+        );
+        // Continue with other variables
+      }
+    });
 
-  // Position the main frame
-  mainFrame.x = 100;
-  mainFrame.y = 100;
+    console.log(
+      `✅ Successfully created ${successfulTables}/${results.length} variable tables`
+    );
 
-  // Focus on the created frame
-  figma.viewport.scrollAndZoomIntoView([mainFrame]);
-  figma.currentPage.selection = [mainFrame];
+    // Position the main frame
+    mainFrame.x = 100;
+    mainFrame.y = 100;
 
-  return mainFrame;
+    // Focus on the created frame
+    figma.viewport.scrollAndZoomIntoView([mainFrame]);
+    figma.currentPage.selection = [mainFrame];
+
+    return mainFrame;
+  } catch (error) {
+    console.error("❌ Failed to create result table:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to create result table: ${errorMessage}`);
+  }
 }
 
 /**
@@ -66,7 +92,8 @@ function createSingleVariableTable(
   tableFrame.name = `Table_${variable.name}`;
   tableFrame.layoutMode = "VERTICAL";
   tableFrame.primaryAxisSizingMode = "AUTO";
-  tableFrame.counterAxisSizingMode = "AUTO";
+  tableFrame.counterAxisSizingMode = "FIXED"; // Use FIXED and set width manually
+  tableFrame.resize(382, tableFrame.height); // Set standard width to match your manual example
   tableFrame.paddingTop = 20;
   tableFrame.paddingBottom = 20;
   tableFrame.paddingLeft = 20;
@@ -203,25 +230,149 @@ function createNodesSection(boundNodes: BoundNodeInfo[]): FrameNode {
   nodesFrame.itemSpacing = 12;
   nodesFrame.fills = [];
 
-  boundNodes.forEach((nodeInfo, index) => {
-    const nodeItemFrame = createNodeItem(nodeInfo, index + 1);
-    nodesFrame.appendChild(nodeItemFrame);
+  // Filter out invalid nodes and log warnings
+  const validBoundNodes = boundNodes.filter((nodeInfo, index) => {
+    if (!nodeInfo.node || !nodeInfo.node.id) {
+      console.warn(`Skipping invalid node at index ${index}:`, nodeInfo);
+      return false;
+    }
+
+    // Verify node still exists in the document
+    const existingNode = figma.getNodeById(nodeInfo.node.id);
+    if (!existingNode) {
+      console.warn(
+        `Skipping node ${nodeInfo.node.id} - no longer exists in document`
+      );
+      return false;
+    }
+
+    return true;
+  });
+
+  console.log(
+    `Processing ${validBoundNodes.length} valid nodes out of ${boundNodes.length} total`
+  );
+
+  validBoundNodes.forEach((nodeInfo, index) => {
+    try {
+      const nodeItemFrame = createNodeItem(nodeInfo, index + 1);
+      nodesFrame.appendChild(nodeItemFrame);
+    } catch (error) {
+      console.error(
+        `Failed to create node item for ${nodeInfo.node.id}:`,
+        error
+      );
+      // Continue with other nodes
+    }
   });
 
   return nodesFrame;
 }
 
 /**
+ * Finds the parent component or instance for a given node
+ * Traverses up the node tree to find the closest component or instance
+ */
+function findParentComponent(node: SceneNode): SceneNode | null {
+  let currentNode: BaseNode | null = node;
+  
+  while (currentNode && currentNode.parent) {
+    if (currentNode.parent.type === "COMPONENT" || currentNode.parent.type === "INSTANCE") {
+      return currentNode.parent as SceneNode;
+    }
+    currentNode = currentNode.parent;
+  }
+  
+  return null;
+}
+
+/**
+ * Converts technical property paths to user-friendly names
+ * Examples: "fills[0].color" -> "Fill", "strokes[0].color" -> "Stroke", etc.
+ */
+function getFriendlyPropertyName(propertyPath: string): string {
+  const friendlyNames: Record<string, string> = {
+    "fills[0].color": "Fill",
+    "strokes[0].color": "Stroke",
+    "effects[0].color": "Effect Color",
+    "effects[0].radius": "Effect Radius",
+    "effects[0].offset.x": "Effect Offset X",
+    "effects[0].offset.y": "Effect Offset Y",
+    "effects[0].spread": "Effect Spread",
+    "cornerRadius": "Corner Radius",
+    "paddingTop": "Padding Top",
+    "paddingBottom": "Padding Bottom",
+    "paddingLeft": "Padding Left",
+    "paddingRight": "Padding Right",
+    "itemSpacing": "Item Spacing",
+    "fontSize": "Font Size",
+    "fontName": "Font Family",
+    "lineHeight": "Line Height",
+    "letterSpacing": "Letter Spacing",
+    "paragraphSpacing": "Paragraph Spacing",
+    "paragraphIndent": "Paragraph Indent",
+    "textCase": "Text Case",
+    "textDecoration": "Text Decoration",
+    "textAlignHorizontal": "Text Align",
+    "textAlignVertical": "Text Align Vertical",
+  };
+
+  // Check for exact matches first
+  if (friendlyNames[propertyPath]) {
+    return friendlyNames[propertyPath];
+  }
+
+  // Handle array indices patterns like "fills[1].color" -> "Fill 2"
+  const arrayPattern = /^(\w+)\[(\d+)\]\.(.+)$/;
+  const arrayMatch = propertyPath.match(arrayPattern);
+  if (arrayMatch) {
+    const [, property, index, subProperty] = arrayMatch;
+    const baseName = friendlyNames[`${property}[0].${subProperty}`] || property;
+    return `${baseName} ${parseInt(index) + 1}`;
+  }
+
+  // Handle simple property names
+  const simplePattern = /^(\w+)$/;
+  const simpleMatch = propertyPath.match(simplePattern);
+  if (simpleMatch) {
+    const property = simpleMatch[1];
+    // Capitalize first letter and add spaces before capitals
+    return property.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+  }
+
+  // Fallback: return the original path but cleaner
+  return propertyPath.replace(/\[\d+\]/g, match => ` ${parseInt(match.slice(1, -1)) + 1}`).replace(/\./g, ' > ');
+}
+
+/**
  * Creates a single node item
  */
 function createNodeItem(nodeInfo: BoundNodeInfo, index: number): FrameNode {
+  console.log(`Creating node item ${index}:`, nodeInfo);
   const { node, boundProperties, propertyPath, pageName } = nodeInfo;
+  
+  // Find the parent component or instance for linking
+  const targetNode = findParentComponent(node) || node;
+  const isComponent = targetNode.type === "COMPONENT" || targetNode.type === "INSTANCE";
+
+  // Validate node exists and has required properties
+  if (!node || !node.id) {
+    console.warn(`Invalid node in nodeInfo at index ${index}`);
+    throw new Error(`Invalid node: ${JSON.stringify(nodeInfo)}`);
+  }
+
+  // Check if node still exists in the document
+  const existingNode = figma.getNodeById(node.id);
+  if (!existingNode) {
+    console.warn(`Node ${node.id} no longer exists in the document`);
+    throw new Error(`Node no longer exists: ${node.id}`);
+  }
 
   const nodeFrame = figma.createFrame();
   nodeFrame.name = `Node_${index}`;
   nodeFrame.layoutMode = "VERTICAL";
   nodeFrame.primaryAxisSizingMode = "AUTO";
-  nodeFrame.counterAxisSizingMode = "AUTO";
+  nodeFrame.counterAxisSizingMode = "AUTO"; // Auto sizing for container width
   nodeFrame.paddingTop = 12;
   nodeFrame.paddingBottom = 12;
   nodeFrame.paddingLeft = 16;
@@ -230,74 +381,129 @@ function createNodeItem(nodeInfo: BoundNodeInfo, index: number): FrameNode {
   nodeFrame.fills = [{ type: "SOLID", color: { r: 0.97, g: 0.97, b: 0.97 } }];
   nodeFrame.cornerRadius = 6;
 
-  // Node title (clickable to navigate to node)
+  // Node title (clickable for all nodes)
   const titleText = figma.createText();
-  titleText.characters = `🔗 ${index}. ${node.name || node.type} (${
-    node.type
+  const linkIcon = "🔗"; // Use link icon for all nodes since they all get hyperlinks now
+  const titleContent = `${linkIcon} ${index}. ${targetNode.name || targetNode.type} (${
+    targetNode.type
   }) [Page: ${pageName}]`;
+  console.log(`📝 Creating text with content: "${titleContent}"`);
+  
+  // Set text properties
   titleText.fontSize = 13;
   titleText.fontName = getFontName("Medium");
-  titleText.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.4, b: 0.8 } }]; // Blue color to indicate it's clickable
+  titleText.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.4, b: 0.8 } }]; // Blue color for all linked text
 
-  // Store the node reference as plugin data so we can navigate to it
-  titleText.setPluginData("targetNodeId", node.id);
-  titleText.setPluginData("targetPageId", getPageId(node));
+  // Set characters after properties
+  titleText.characters = titleContent;
+  console.log(
+    `✅ Text created successfully with ${titleText.characters.length} characters`
+  );
 
-  // Add click handler by making it a clickable frame
-  const clickableFrame = figma.createFrame();
-  clickableFrame.name = `ClickableTitle_${index}`;
-  clickableFrame.layoutMode = "HORIZONTAL";
-  clickableFrame.primaryAxisSizingMode = "AUTO";
-  clickableFrame.counterAxisSizingMode = "AUTO";
-  clickableFrame.paddingTop = 4;
-  clickableFrame.paddingBottom = 4;
-  clickableFrame.paddingLeft = 8;
-  clickableFrame.paddingRight = 8;
-  clickableFrame.fills = [{ type: "SOLID", color: { r: 0.95, g: 0.98, b: 1 } }]; // Very light blue background
-  clickableFrame.cornerRadius = 6;
-  clickableFrame.strokes = [
+  // Create native Figma hyperlink for all nodes (not just components)
+  try {
+    console.log(`🔍 Processing node for hyperlink: ${targetNode.id} (${targetNode.type})`);
+
+    const existingNode = figma.getNodeById(targetNode.id);
+    console.log(
+      `📋 Found existing node: ${existingNode?.id} (${existingNode?.type})`
+    );
+
+    if (existingNode && existingNode.type !== "DOCUMENT") {
+      // Method 1: Try setRangeHyperlink
+      try {
+        const titleLink: HyperlinkTarget = {
+          type: "NODE",
+          value: targetNode.id,
+        };
+        console.log(
+          `🎯 Setting hyperlink for text: "${titleText.characters}" (length: ${titleText.characters.length})`
+        );
+        titleText.setRangeHyperlink(0, titleText.characters.length, titleLink);
+        console.log(
+          `✅ Successfully created native hyperlink for node ${targetNode.id}`
+        );
+
+        // Verify the hyperlink was set
+        const hyperlink = titleText.getRangeHyperlink(
+          0,
+          titleText.characters.length
+        );
+        console.log(`🔗 Hyperlink verification:`, hyperlink);
+
+        // If hyperlink is null, try alternative method
+        if (!hyperlink) {
+          console.log(
+            `⚠️ Hyperlink verification failed, trying alternative method...`
+          );
+          // Try setting hyperlink on the entire text node
+          titleText.hyperlink = titleLink;
+          console.log(`✅ Set hyperlink using alternative method`);
+        }
+      } catch (hyperlinkError) {
+        console.warn(`❌ setRangeHyperlink failed:`, hyperlinkError);
+
+        // Method 2: Try setting hyperlink property directly
+        try {
+          const titleLink: HyperlinkTarget = {
+            type: "NODE",
+            value: targetNode.id,
+          };
+          titleText.hyperlink = titleLink;
+          console.log(`✅ Set hyperlink using direct property method`);
+        } catch (directError) {
+          console.warn(`❌ Direct hyperlink method also failed:`, directError);
+        }
+      }
+    } else {
+      console.log(
+        `⏭️ Skipping hyperlink for node ${
+          targetNode.id
+        } - existingNode: ${!!existingNode}, type: ${existingNode?.type}`
+      );
+    }
+  } catch (error) {
+    console.warn(`❌ Failed to set hyperlink for node ${targetNode.id}:`, error);
+    console.warn(
+      `Error details:`,
+      error instanceof Error ? error.stack : String(error)
+    );
+  }
+
+  // Container frame with styling that indicates clickability
+  const linkContainer = figma.createFrame();
+  linkContainer.name = `Link_${index}`;
+  linkContainer.layoutMode = "HORIZONTAL";
+  linkContainer.primaryAxisSizingMode = "AUTO";
+  linkContainer.counterAxisSizingMode = "AUTO";
+  linkContainer.paddingTop = 4;
+  linkContainer.paddingBottom = 4;
+  linkContainer.paddingLeft = 8;
+  linkContainer.paddingRight = 8;
+  // Light blue background for all nodes (since they all get hyperlinks now)
+  linkContainer.fills = [{ type: "SOLID", color: { r: 0.95, g: 0.98, b: 1 } }];
+  linkContainer.cornerRadius = 6;
+
+  // Blue dashed border for all nodes (since they all get hyperlinks now)
+  linkContainer.strokes = [
     { type: "SOLID", color: { r: 0.1, g: 0.4, b: 0.8 } },
   ];
-  clickableFrame.strokeWeight = 1;
-  clickableFrame.dashPattern = [2, 2]; // Dashed border to indicate interactivity
+  linkContainer.strokeWeight = 1;
+  linkContainer.dashPattern = [2, 2]; // Dashed border to indicate it's a link
 
-  // Add hover effect styling
-  clickableFrame.effects = [
-    {
-      type: "DROP_SHADOW",
-      color: { r: 0, g: 0, b: 0, a: 0.1 },
-      offset: { x: 0, y: 1 },
-      radius: 2,
-      spread: 0,
-      visible: false,
-      blendMode: "NORMAL",
-    },
-  ];
+  linkContainer.layoutAlign = "STRETCH";
 
-  clickableFrame.appendChild(titleText);
+  linkContainer.appendChild(titleText);
+  nodeFrame.appendChild(linkContainer);
 
-  // Store navigation data on the clickable frame
-  clickableFrame.setPluginData("targetNodeId", node.id);
-  clickableFrame.setPluginData("targetPageId", getPageId(node));
-  clickableFrame.setPluginData("isNavigationLink", "true");
-
-  nodeFrame.appendChild(clickableFrame);
-
-  // Properties
+  // Properties (with friendly names)
   const propertiesText = figma.createText();
-  propertiesText.characters = `Properties: ${boundProperties.join(", ")}`;
+  const friendlyProperties = boundProperties.map(prop => getFriendlyPropertyName(prop));
+  propertiesText.characters = `Properties: ${friendlyProperties.join(", ")}`;
   propertiesText.fontSize = 11;
   propertiesText.fontName = getFontName("Regular");
   propertiesText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
   nodeFrame.appendChild(propertiesText);
-
-  // Path
-  const pathText = figma.createText();
-  pathText.characters = `Path: ${propertyPath}`;
-  pathText.fontSize = 11;
-  pathText.fontName = getFontName("Regular");
-  pathText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
-  nodeFrame.appendChild(pathText);
 
   return nodeFrame;
 }
@@ -359,45 +565,7 @@ function getFontName(style: "Regular" | "Medium" | "Bold"): FontName {
   }
 }
 
-/**
- * Handles navigation to a node when a clickable element is clicked
- * This should be called from a selection change handler in the main plugin
- */
-export function handleNavigationClick(selectedNode: SceneNode): boolean {
-  // Check if the selected node has navigation data
-  const isNavigationLink = selectedNode.getPluginData("isNavigationLink");
-
-  if (isNavigationLink === "true") {
-    const targetNodeId = selectedNode.getPluginData("targetNodeId");
-    const targetPageId = selectedNode.getPluginData("targetPageId");
-
-    if (targetNodeId && targetPageId) {
-      try {
-        // Find the target node
-        const targetNode = figma.getNodeById(targetNodeId);
-        const targetPage = figma.getNodeById(targetPageId);
-
-        if (targetNode && targetPage && targetPage.type === "PAGE") {
-          // Switch to the target page if necessary
-          if (figma.currentPage.id !== targetPageId) {
-            figma.currentPage = targetPage as PageNode;
-          }
-
-          // Navigate to the target node
-          figma.viewport.scrollAndZoomIntoView([targetNode]);
-          figma.currentPage.selection = [targetNode as SceneNode];
-
-          console.log(`🎯 Navigated to: ${targetNode.name || targetNode.type}`);
-          return true;
-        }
-      } catch (error) {
-        console.warn("Failed to navigate to node:", error);
-      }
-    }
-  }
-
-  return false;
-}
+// Navigation functions removed - using Figma native hyperlinks only
 
 /**
  * Resets font loading state (useful for multiple plugin runs)

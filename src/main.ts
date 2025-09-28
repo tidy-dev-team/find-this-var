@@ -15,19 +15,10 @@ import {
   createResultTable,
   loadInterFont,
   resetFonts,
-  handleNavigationClick,
 } from "./drawResultTable";
 
 export default function () {
-  // Handle selection changes for navigation clicks
-  figma.on("selectionchange", () => {
-    const selection = figma.currentPage.selection;
-    if (selection.length === 1) {
-      const selectedNode = selection[0];
-      // Try to handle navigation click
-      handleNavigationClick(selectedNode);
-    }
-  });
+  // No custom navigation needed - using Figma's native hyperlinks only
 
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
     const nodes: Array<SceneNode> = [];
@@ -362,21 +353,29 @@ export default function () {
         // Create visual table if we have results
         if (results.length > 0) {
           try {
+            console.log(`🎨 Creating result table for ${results.length} variables...`);
             const resultTable = createResultTable(results);
             console.log(
-              `📊 Created visual result table with ${results.reduce(
+              `📊 Successfully created visual result table with ${results.reduce(
                 (total, r) => total + r.boundNodes.length,
                 0
               )} total bound nodes across ${results.length} variables`
             );
           } catch (tableError) {
             console.error("❌ Error creating result table:", tableError);
+            if (tableError instanceof Error) {
+              console.error("Stack trace:", tableError.stack);
+            }
+            
             // Fallback to console output
-            console.log("Falling back to console output:");
-            results.forEach((result) => {
+            console.log("📋 Falling back to console output:");
+            results.forEach((result, index) => {
               console.log(
-                `Variable: ${result.variable.name} - ${result.boundNodes.length} nodes found`
+                `${index + 1}. Variable: ${result.variable.name} - ${result.boundNodes.length} nodes found`
               );
+              result.boundNodes.forEach((boundNode, nodeIndex) => {
+                console.log(`   ${nodeIndex + 1}. ${boundNode.node.name} (${boundNode.node.type}) - ${boundNode.boundProperties.join(', ')}`);
+              });
             });
           }
         } else {
