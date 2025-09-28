@@ -17,7 +17,10 @@ export interface ColorVariablesResultHandler extends EventHandler {
 
 export interface FindBoundNodesHandler extends EventHandler {
   name: "FIND_BOUND_NODES";
-  handler: (variableIds: string[]) => void;
+  handler: (options: {
+    variableIds: string[];
+    componentsOnly: boolean;
+  }) => void;
 }
 
 export interface CloseHandler extends EventHandler {

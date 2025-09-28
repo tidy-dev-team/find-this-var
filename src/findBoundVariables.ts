@@ -12,10 +12,12 @@ interface BoundNodeInfo {
 /**
  * Recursively traverses all nodes in the document to find where a variable is used
  * @param variable - The variable to search for
+ * @param componentsOnly - If true, only search within components (COMPONENT and INSTANCE nodes)
  * @returns Array of nodes and properties where the variable is bound
  */
 export function findNodesWithBoundVariable(
-  variable: Variable
+  variable: Variable,
+  componentsOnly: boolean = false
 ): BoundNodeInfo[] {
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
@@ -25,6 +27,8 @@ export function findNodesWithBoundVariable(
    */
   function checkNode(node: SceneNode): void {
     const boundProperties: string[] = [];
+
+    // Check all nodes normally since filtering is done at the root level
 
     // Check fills for variable bindings
     if ("fills" in node && node.fills && Array.isArray(node.fills)) {
@@ -140,6 +144,11 @@ export function findNodesWithBoundVariable(
 
     // If any properties are bound to this variable, add the node to results
     if (boundProperties.length > 0) {
+      console.log(
+        `✅ Found variable usage in: ${node.name || node.type} (${
+          node.type
+        }) - Properties: ${boundProperties.join(", ")}`
+      );
       boundNodes.push({
         node,
         boundProperties,
@@ -193,7 +202,26 @@ export function findNodesWithBoundVariable(
   // Start checking from all pages
   figma.root.children.forEach((page) => {
     if (page.type === "PAGE") {
-      page.children.forEach((child) => checkNode(child));
+      if (componentsOnly) {
+        // When componentsOnly is true, only start from components and instances
+        const findComponentsInNode = (node: SceneNode): void => {
+          if (node.type === "COMPONENT" || node.type === "INSTANCE") {
+            console.log(
+              `🏗️ Found component/instance to check: ${node.name || node.type}`
+            );
+            checkNode(node);
+          }
+          // Continue searching for components in children
+          if ("children" in node && node.children) {
+            node.children.forEach((child) => findComponentsInNode(child));
+          }
+        };
+
+        page.children.forEach((child) => findComponentsInNode(child));
+      } else {
+        // Normal behavior - check all nodes
+        page.children.forEach((child) => checkNode(child));
+      }
     }
   });
 
@@ -203,10 +231,14 @@ export function findNodesWithBoundVariable(
 /**
  * Helper function to get a summary of where a variable is used
  * @param variable - The variable to analyze
+ * @param componentsOnly - If true, only search within components
  * @returns Object with usage statistics and node list
  */
-export function getVariableUsageSummary(variable: Variable) {
-  const boundNodes = findNodesWithBoundVariable(variable);
+export function getVariableUsageSummary(
+  variable: Variable,
+  componentsOnly: boolean = false
+) {
+  const boundNodes = findNodesWithBoundVariable(variable, componentsOnly);
 
   const summary = {
     totalNodes: boundNodes.length,

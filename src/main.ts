@@ -110,8 +110,7 @@ export default function () {
       try {
         const allCollections = figma.variables.getLocalVariableCollections();
 
-        // Also try to get variables that might be references from external sources
-        // by examining existing variable collections and their variables
+        // Process variables from local collections (some might be external)
         for (const collection of allCollections) {
           for (const variableId of collection.variableIds) {
             try {
@@ -154,6 +153,136 @@ export default function () {
             }
           }
         }
+
+        // Additional scan: Look through all nodes to find external variable references
+        // This helps discover published variables that aren't in local collections
+        const discoveredVariableIds = new Set<string>();
+
+        const scanNodeForVariableReferences = (node: SceneNode): void => {
+          // Check fills for variable references
+          if ("fills" in node && node.fills && Array.isArray(node.fills)) {
+            node.fills.forEach((fill) => {
+              if (fill.type === "SOLID" && fill.boundVariables?.color) {
+                discoveredVariableIds.add(fill.boundVariables.color.id);
+              }
+            });
+          }
+
+          // Check strokes for variable references
+          if (
+            "strokes" in node &&
+            node.strokes &&
+            Array.isArray(node.strokes)
+          ) {
+            node.strokes.forEach((stroke) => {
+              if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
+                discoveredVariableIds.add(stroke.boundVariables.color.id);
+              }
+            });
+          }
+
+          // Check boundVariables for other properties
+          if ("boundVariables" in node && node.boundVariables) {
+            Object.values(node.boundVariables).forEach((variableAlias) => {
+              if (
+                variableAlias &&
+                typeof variableAlias === "object" &&
+                "id" in variableAlias &&
+                typeof variableAlias.id === "string"
+              ) {
+                discoveredVariableIds.add(variableAlias.id);
+              }
+            });
+          }
+
+          // Check effects for variable references
+          if (
+            "effects" in node &&
+            node.effects &&
+            Array.isArray(node.effects)
+          ) {
+            node.effects.forEach((effect) => {
+              if (effect.boundVariables?.color?.id) {
+                discoveredVariableIds.add(effect.boundVariables.color.id);
+              }
+              if (effect.boundVariables?.radius?.id) {
+                discoveredVariableIds.add(effect.boundVariables.radius.id);
+              }
+              if (effect.boundVariables?.offset?.x?.id) {
+                discoveredVariableIds.add(effect.boundVariables.offset.x.id);
+              }
+              if (effect.boundVariables?.offset?.y?.id) {
+                discoveredVariableIds.add(effect.boundVariables.offset.y.id);
+              }
+              if (effect.boundVariables?.spread?.id) {
+                discoveredVariableIds.add(effect.boundVariables.spread.id);
+              }
+            });
+          }
+
+          // Recursively check children
+          if ("children" in node && node.children) {
+            node.children.forEach((child) =>
+              scanNodeForVariableReferences(child)
+            );
+          }
+        };
+
+        // Scan all pages for variable references
+        figma.root.children.forEach((page) => {
+          if (page.type === "PAGE") {
+            page.children.forEach((child) =>
+              scanNodeForVariableReferences(child)
+            );
+          }
+        });
+
+        console.log(
+          `🔍 Discovered ${discoveredVariableIds.size} variable references in document`
+        );
+
+        // Process discovered variable IDs that weren't found in collections
+        Array.from(discoveredVariableIds).forEach((variableId) => {
+          if (!processedVariableIds.has(variableId)) {
+            try {
+              const variable = figma.variables.getVariableById(variableId);
+              if (variable && variable.resolvedType === "COLOR") {
+                const isLocalVar = localVariables.some(
+                  (v) => v.id === variable.id
+                );
+
+                console.log(
+                  `📥 Found external color variable: "${variable.name}" (${
+                    isLocalVar ? "local" : "external"
+                  })`
+                );
+
+                const colorVar: ColorVariable = {
+                  id: variable.id,
+                  name: variable.name,
+                  resolvedType: variable.resolvedType,
+                  valuesByMode: {},
+                  isLocal: isLocalVar,
+                  libraryName: !isLocalVar ? "External Library" : undefined,
+                };
+
+                // Get values for each mode
+                for (const modeId of Object.keys(variable.valuesByMode)) {
+                  const value = variable.valuesByMode[modeId];
+                  colorVar.valuesByMode[modeId] = resolveVariableValue(
+                    value,
+                    modeId
+                  );
+                }
+
+                colorVariables.push(colorVar);
+                processedVariableIds.add(variable.id);
+              }
+            } catch (error) {
+              console.warn(`Could not access variable ${variableId}:`, error);
+            }
+          }
+        });
       } catch (error) {
         console.warn("Could not access some variable collections:", error);
       }
@@ -167,25 +296,39 @@ export default function () {
 
   once<FindBoundNodesHandler>(
     "FIND_BOUND_NODES",
-    function (variableIds: string[]) {
+    function (options: { variableIds: string[]; componentsOnly: boolean }) {
       try {
+        const { variableIds, componentsOnly } = options;
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
         );
+        console.log(`📋 Variable IDs: ${variableIds.join(", ")}`);
+        console.log(`🏗️ Components only: ${componentsOnly}`);
 
         const results = [];
 
         for (const variableId of variableIds) {
           try {
+            console.log(`🔎 Processing variable: ${variableId}`);
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              const boundNodes = findNodesWithBoundVariable(variable);
-              const summary = getVariableUsageSummary(variable);
+              console.log(
+                `✅ Variable found: "${variable.name}" (${variable.resolvedType})`
+              );
+              const boundNodes = findNodesWithBoundVariable(
+                variable,
+                componentsOnly
+              );
+              const summary = getVariableUsageSummary(variable, componentsOnly);
 
               console.log(
                 `\n📌 Variable: "${variable.name}" (${variable.resolvedType})`
               );
-              console.log(`   Used in ${boundNodes.length} nodes`);
+              console.log(
+                `   Used in ${boundNodes.length} nodes${
+                  componentsOnly ? " (components only)" : ""
+                }`
+              );
 
               if (boundNodes.length > 0) {
                 // Group nodes by page for better organization

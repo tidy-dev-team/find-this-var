@@ -30,6 +30,7 @@ function Plugin() {
   const [selectedVariables, setSelectedVariables] = useState<Set<string>>(
     new Set()
   );
+  const [componentsOnly, setComponentsOnly] = useState<boolean>(true);
 
   useEffect(() => {
     // Listen for color variables result
@@ -96,9 +97,19 @@ function Plugin() {
       console.log(
         `🚀 Finding bound nodes for ${selectedVariableIds.length} selected variables...`
       );
-      emit<FindBoundNodesHandler>("FIND_BOUND_NODES", selectedVariableIds);
+      emit<FindBoundNodesHandler>("FIND_BOUND_NODES", {
+        variableIds: selectedVariableIds,
+        componentsOnly,
+      });
     }
-  }, [selectedVariables]);
+  }, [selectedVariables, componentsOnly]);
+
+  const handleComponentsOnlyChange = useCallback(
+    (event: { currentTarget: { checked: boolean } }) => {
+      setComponentsOnly(event.currentTarget.checked);
+    },
+    []
+  );
 
   const isAllSelected =
     filteredVariables.length > 0 &&
@@ -223,10 +234,20 @@ function Plugin() {
             </Text>
           )}
           {filteredVariables.length > 0 && (
-            <div style={{ marginBottom: "8px" }}>
-              <Checkbox onChange={handleSelectAll} value={isAllSelected}>
-                <Text>Select all ({selectedVariables.size} selected)</Text>
-              </Checkbox>
+            <div>
+              <div style={{ marginBottom: "8px" }}>
+                <Checkbox onChange={handleSelectAll} value={isAllSelected}>
+                  <Text>Select all ({selectedVariables.size} selected)</Text>
+                </Checkbox>
+              </div>
+              <div style={{ marginBottom: "8px" }}>
+                <Checkbox
+                  onChange={handleComponentsOnlyChange}
+                  value={componentsOnly}
+                >
+                  <Text>Components only</Text>
+                </Checkbox>
+              </div>
             </div>
           )}
           <VerticalSpace space="small" />
