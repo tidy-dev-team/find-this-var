@@ -5,6 +5,7 @@ import {
   Muted,
   render,
   Text,
+  Textbox,
   TextboxNumeric,
   VerticalSpace,
 } from "@create-figma-plugin/ui";
@@ -23,6 +24,7 @@ import {
 function Plugin() {
   const [colorVariables, setColorVariables] = useState<ColorVariable[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
     // Listen for color variables result
@@ -43,6 +45,18 @@ function Plugin() {
     setIsLoading(true);
     emit<GetColorVariablesHandler>("GET_COLOR_VARIABLES");
   }, []);
+
+  const handleSearchChange = useCallback(
+    (event: { currentTarget: { value: string } }) => {
+      setSearchQuery(event.currentTarget.value);
+    },
+    []
+  );
+
+  // Filter variables based on search query
+  const filteredVariables = colorVariables.filter((variable) =>
+    variable.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const formatColor = (rgba: {
     r: number;
@@ -135,73 +149,98 @@ function Plugin() {
             </Muted>
           </Text>
           <VerticalSpace space="small" />
+          <Textbox
+            onInput={handleSearchChange}
+            placeholder="Search variables by name..."
+            value={searchQuery}
+          />
+          <VerticalSpace space="small" />
+          {searchQuery && (
+            <Text>
+              <Muted>
+                Showing {filteredVariables.length} of {colorVariables.length}{" "}
+                variables
+              </Muted>
+            </Text>
+          )}
+          <VerticalSpace space="small" />
           <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-            {colorVariables.map((variable) => {
-              const preview = getColorPreview(variable);
-              const displayValue = getDisplayValue(variable);
-              return (
-                <div
-                  key={variable.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "8px",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    backgroundColor: "#f0f0f0",
-                  }}
-                >
+            {filteredVariables.length > 0 ? (
+              filteredVariables.map((variable) => {
+                const preview = getColorPreview(variable);
+                const displayValue = getDisplayValue(variable);
+                return (
                   <div
+                    key={variable.id}
                     style={{
-                      width: "20px",
-                      height: "20px",
-                      backgroundColor: preview.color,
-                      borderRadius: "3px",
-                      marginRight: "8px",
-                      border: "1px solid #ccc",
-                      // Add diagonal stripes pattern for aliases
-                      backgroundImage: preview.isAlias
-                        ? "repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)"
-                        : "none",
+                      display: "flex",
+                      alignItems: "center",
+                      marginBottom: "8px",
+                      padding: "8px",
+                      borderRadius: "4px",
+                      backgroundColor: "#f0f0f0",
                     }}
-                  ></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  >
                     <div
                       style={{
-                        fontSize: "12px",
-                        fontWeight: "bold",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        width: "20px",
+                        height: "20px",
+                        backgroundColor: preview.color,
+                        borderRadius: "3px",
+                        marginRight: "8px",
+                        border: "1px solid #ccc",
+                        // Add diagonal stripes pattern for aliases
+                        backgroundImage: preview.isAlias
+                          ? "repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)"
+                          : "none",
                       }}
-                    >
-                      {variable.name}
-                      {!variable.isLocal && (
-                        <span style={{ color: "#888", fontWeight: "normal" }}>
-                          {" "}
-                          (external
-                          {variable.libraryName
-                            ? ` - ${variable.libraryName}`
-                            : ""}
-                          )
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "10px",
-                        color: "#666",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {displayValue}
+                    ></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {variable.name}
+                        {!variable.isLocal && (
+                          <span style={{ color: "#888", fontWeight: "normal" }}>
+                            {" "}
+                            (external
+                            {variable.libraryName
+                              ? ` - ${variable.libraryName}`
+                              : ""}
+                            )
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          color: "#666",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {displayValue}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <Text>
+                <Muted>
+                  {searchQuery
+                    ? `No variables found matching "${searchQuery}"`
+                    : "No variables to display"}
+                </Muted>
+              </Text>
+            )}
           </div>
         </div>
       )}
