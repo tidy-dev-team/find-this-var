@@ -1,0 +1,10 @@
+{
+  "api": "1.0.0",
+  "editorType": [
+    "figma"
+  ],
+  "id": "something-something",
+  "name": "Find this var",
+  "main": "build/main.js",
+  "ui": "build/ui.js"
+}
