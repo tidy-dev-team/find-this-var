@@ -1,0 +1,243 @@
+/**
+ * Finds all nodes in the document where a specific variable is bound/used
+ */
+
+interface BoundNodeInfo {
+  node: SceneNode;
+  boundProperties: string[];
+  propertyPath: string;
+}
+
+/**
+ * Recursively traverses all nodes in the document to find where a variable is used
+ * @param variable - The variable to search for
+ * @returns Array of nodes and properties where the variable is bound
+ */
+export function findNodesWithBoundVariable(
+  variable: Variable
+): BoundNodeInfo[] {
+  const boundNodes: BoundNodeInfo[] = [];
+  const variableId = variable.id;
+
+  /**
+   * Recursively check a node and its children for variable bindings
+   */
+  function checkNode(node: SceneNode): void {
+    const boundProperties: string[] = [];
+
+    // Check fills for variable bindings
+    if ("fills" in node && node.fills && Array.isArray(node.fills)) {
+      node.fills.forEach((fill, index) => {
+        if (fill.type === "SOLID" && fill.boundVariables?.color) {
+          if (fill.boundVariables.color.id === variableId) {
+            boundProperties.push(`fills[${index}].color`);
+          }
+        }
+      });
+    }
+
+    // Check strokes for variable bindings
+    if ("strokes" in node && node.strokes && Array.isArray(node.strokes)) {
+      node.strokes.forEach((stroke, index) => {
+        if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
+          if (stroke.boundVariables.color.id === variableId) {
+            boundProperties.push(`strokes[${index}].color`);
+          }
+        }
+      });
+    }
+
+    // Check basic boundVariables properties that are common across all node types
+    if ("boundVariables" in node && node.boundVariables) {
+      // Width and height (available on most nodes)
+      if (node.boundVariables.width?.id === variableId) {
+        boundProperties.push("width");
+      }
+      if (node.boundVariables.height?.id === variableId) {
+        boundProperties.push("height");
+      }
+
+      // Layout properties (auto-layout nodes)
+      if (node.boundVariables.paddingLeft?.id === variableId) {
+        boundProperties.push("paddingLeft");
+      }
+      if (node.boundVariables.paddingRight?.id === variableId) {
+        boundProperties.push("paddingRight");
+      }
+      if (node.boundVariables.paddingTop?.id === variableId) {
+        boundProperties.push("paddingTop");
+      }
+      if (node.boundVariables.paddingBottom?.id === variableId) {
+        boundProperties.push("paddingBottom");
+      }
+      if (node.boundVariables.itemSpacing?.id === variableId) {
+        boundProperties.push("itemSpacing");
+      }
+      if (node.boundVariables.counterAxisSpacing?.id === variableId) {
+        boundProperties.push("counterAxisSpacing");
+      }
+
+      // Text properties (text nodes only)
+      if (node.type === "TEXT") {
+        if (node.boundVariables.characters?.id === variableId) {
+          boundProperties.push("characters");
+        }
+      }
+    }
+
+    // Use Figma's built-in method to get all bound variables for this node
+    // Note: This approach manually checks common bound variable properties
+    // since getBoundVariablesForNode() may not be available in all API versions
+
+    // Check effect properties (shadows, blurs)
+    if ("effects" in node && node.effects && Array.isArray(node.effects)) {
+      node.effects.forEach((effect, index) => {
+        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+          if (effect.boundVariables?.color?.id === variableId) {
+            boundProperties.push(`effects[${index}].color`);
+          }
+          if (effect.boundVariables?.offset?.x?.id === variableId) {
+            boundProperties.push(`effects[${index}].offset.x`);
+          }
+          if (effect.boundVariables?.offset?.y?.id === variableId) {
+            boundProperties.push(`effects[${index}].offset.y`);
+          }
+          if (effect.boundVariables?.radius?.id === variableId) {
+            boundProperties.push(`effects[${index}].radius`);
+          }
+          if (effect.boundVariables?.spread?.id === variableId) {
+            boundProperties.push(`effects[${index}].spread`);
+          }
+        }
+        if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+          if (effect.boundVariables?.radius?.id === variableId) {
+            boundProperties.push(`effects[${index}].radius`);
+          }
+        }
+      });
+    }
+
+    // Check component properties (for instances)
+    if (
+      node.type === "INSTANCE" &&
+      "componentProperties" in node &&
+      node.componentProperties
+    ) {
+      Object.entries(node.componentProperties).forEach(
+        ([propName, propValue]) => {
+          if (
+            propValue &&
+            typeof propValue === "object" &&
+            "boundVariables" in propValue &&
+            propValue.boundVariables?.value?.id === variableId
+          ) {
+            boundProperties.push(`componentProperties.${propName}`);
+          }
+        }
+      );
+    }
+
+    // If any properties are bound to this variable, add the node to results
+    if (boundProperties.length > 0) {
+      boundNodes.push({
+        node,
+        boundProperties,
+        propertyPath: getNodePath(node),
+      });
+    }
+
+    // Recursively check children
+    if ("children" in node && node.children) {
+      node.children.forEach((child) => checkNode(child));
+    }
+  }
+
+  /**
+   * Get the path to a node (for debugging/display purposes)
+   */
+  function getNodePath(node: SceneNode): string {
+    const path: string[] = [];
+    let currentNode: BaseNode | null = node;
+
+    while (
+      currentNode &&
+      currentNode.parent &&
+      currentNode.parent.type !== "DOCUMENT"
+    ) {
+      path.unshift(currentNode.name || currentNode.type);
+      currentNode = currentNode.parent;
+    }
+
+    return path.length > 0 ? path.join(" > ") : node.name || node.type;
+  }
+
+  // Start checking from all pages
+  figma.root.children.forEach((page) => {
+    if (page.type === "PAGE") {
+      page.children.forEach((child) => checkNode(child));
+    }
+  });
+
+  return boundNodes;
+}
+
+/**
+ * Helper function to get a summary of where a variable is used
+ * @param variable - The variable to analyze
+ * @returns Object with usage statistics and node list
+ */
+export function getVariableUsageSummary(variable: Variable) {
+  const boundNodes = findNodesWithBoundVariable(variable);
+
+  const summary = {
+    totalNodes: boundNodes.length,
+    nodesByType: {} as Record<string, number>,
+    propertyUsage: {} as Record<string, number>,
+    nodes: boundNodes,
+  };
+
+  boundNodes.forEach(({ node, boundProperties }) => {
+    // Count by node type
+    summary.nodesByType[node.type] = (summary.nodesByType[node.type] || 0) + 1;
+
+    // Count by property type
+    boundProperties.forEach((prop) => {
+      const baseProperty = prop.split("[")[0].split(".")[0]; // Extract base property name
+      summary.propertyUsage[baseProperty] =
+        (summary.propertyUsage[baseProperty] || 0) + 1;
+    });
+  });
+
+  return summary;
+}
+
+/**
+ * Example usage:
+ *
+ * // Get a specific variable by ID
+ * const variable = figma.variables.getVariableById('your-variable-id');
+ * if (variable) {
+ *   const boundNodes = findNodesWithBoundVariable(variable);
+ *   console.log(`Variable "${variable.name}" is used in ${boundNodes.length} nodes:`);
+ *
+ *   boundNodes.forEach(({ node, boundProperties, propertyPath }) => {
+ *     console.log(`- ${node.name} (${node.type}): ${boundProperties.join(', ')}`);
+ *     console.log(`  Path: ${propertyPath}`);
+ *   });
+ *
+ *   // Or get a summary
+ *   const summary = getVariableUsageSummary(variable);
+ *   console.log('Usage summary:', summary);
+ * }
+ *
+ * // Find all color variables and their usage
+ * const allVariables = figma.variables.getLocalVariables();
+ * const colorVariables = allVariables.filter(v => v.resolvedType === 'COLOR');
+ *
+ * colorVariables.forEach(variable => {
+ *   const usage = getVariableUsageSummary(variable);
+ *   if (usage.totalNodes > 0) {
+ *     console.log(`${variable.name}: used in ${usage.totalNodes} nodes`);
+ *   }
+ * });
+ */
