@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Columns,
   Container,
   Muted,
@@ -25,6 +26,9 @@ function Plugin() {
   const [colorVariables, setColorVariables] = useState<ColorVariable[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedVariables, setSelectedVariables] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     // Listen for color variables result
@@ -57,6 +61,46 @@ function Plugin() {
   const filteredVariables = colorVariables.filter((variable) =>
     variable.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleVariableSelect = useCallback(
+    (variableId: string, checked: boolean) => {
+      setSelectedVariables((prev) => {
+        const newSet = new Set(prev);
+        if (checked) {
+          newSet.add(variableId);
+        } else {
+          newSet.delete(variableId);
+        }
+        return newSet;
+      });
+    },
+    []
+  );
+
+  const handleSelectAll = useCallback(
+    (event: { currentTarget: { checked: boolean } }) => {
+      const checked = event.currentTarget.checked;
+      if (checked) {
+        setSelectedVariables(new Set(filteredVariables.map((v) => v.id)));
+      } else {
+        setSelectedVariables(new Set());
+      }
+    },
+    [filteredVariables]
+  );
+
+  const handleGetSelected = useCallback(() => {
+    const selected = colorVariables.filter((v) => selectedVariables.has(v.id));
+    console.log("Selected variables:", selected);
+    // TODO: Implement action with selected variables
+  }, [colorVariables, selectedVariables]);
+
+  const isAllSelected =
+    filteredVariables.length > 0 &&
+    filteredVariables.every((v) => selectedVariables.has(v.id));
+  const isPartiallySelected =
+    filteredVariables.some((v) => selectedVariables.has(v.id)) &&
+    !isAllSelected;
 
   const formatColor = (rgba: {
     r: number;
@@ -128,7 +172,10 @@ function Plugin() {
   };
 
   return (
-    <Container space="medium">
+    <Container
+      space="medium"
+      style={{ height: "100vh", display: "flex", flexDirection: "column" }}
+    >
       <VerticalSpace space="large" />
       <Button
         fullWidth
@@ -141,7 +188,14 @@ function Plugin() {
       <VerticalSpace space="medium" />
 
       {colorVariables.length > 0 && (
-        <div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <Text>
             <Muted>
               Found {colorVariables.length} color variable
@@ -163,24 +217,60 @@ function Plugin() {
               </Muted>
             </Text>
           )}
+          {filteredVariables.length > 0 && (
+            <div style={{ marginBottom: "8px" }}>
+              <Checkbox onChange={handleSelectAll} value={isAllSelected}>
+                <Text>Select all ({selectedVariables.size} selected)</Text>
+              </Checkbox>
+            </div>
+          )}
           <VerticalSpace space="small" />
-          <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              minHeight: 0,
+              border: "1px solid #e0e0e0",
+              borderRadius: "4px",
+              padding: "4px",
+            }}
+          >
             {filteredVariables.length > 0 ? (
               filteredVariables.map((variable) => {
                 const preview = getColorPreview(variable);
                 const displayValue = getDisplayValue(variable);
+                const isSelected = selectedVariables.has(variable.id);
                 return (
                   <div
                     key={variable.id}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      marginBottom: "8px",
+                      marginBottom: "4px",
                       padding: "8px",
                       borderRadius: "4px",
-                      backgroundColor: "#f0f0f0",
+                      backgroundColor: isSelected ? "#e3f2fd" : "#f0f0f0",
+                      border: isSelected
+                        ? "1px solid #2196f3"
+                        : "1px solid transparent",
+                      cursor: "pointer",
                     }}
+                    onClick={() =>
+                      handleVariableSelect(variable.id, !isSelected)
+                    }
                   >
+                    <Checkbox
+                      onChange={(event) =>
+                        handleVariableSelect(
+                          variable.id,
+                          event.currentTarget.checked
+                        )
+                      }
+                      value={isSelected}
+                      style={{ marginRight: "8px" }}
+                    >
+                      <span></span>
+                    </Checkbox>
                     <div
                       style={{
                         width: "20px",
@@ -233,15 +323,26 @@ function Plugin() {
                 );
               })
             ) : (
-              <Text>
-                <Muted>
-                  {searchQuery
-                    ? `No variables found matching "${searchQuery}"`
-                    : "No variables to display"}
-                </Muted>
-              </Text>
+              <div style={{ padding: "20px", textAlign: "center" }}>
+                <Text>
+                  <Muted>
+                    {searchQuery
+                      ? `No variables found matching "${searchQuery}"`
+                      : "No variables to display"}
+                  </Muted>
+                </Text>
+              </div>
             )}
           </div>
+          <VerticalSpace space="medium" />
+          <Button
+            fullWidth
+            onClick={handleGetSelected}
+            disabled={selectedVariables.size === 0}
+          >
+            Get ({selectedVariables.size} selected)
+          </Button>
+          <VerticalSpace space="medium" />
         </div>
       )}
 
