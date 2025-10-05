@@ -17,7 +17,8 @@ export interface BoundNodeInfo {
  */
 export function findNodesWithBoundVariable(
   variable: Variable,
-  instancesOnly: boolean = false
+  instancesOnly: boolean = false,
+  pageId?: string | null
 ): BoundNodeInfo[] {
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
@@ -204,8 +205,12 @@ export function findNodesWithBoundVariable(
     return path.length > 0 ? path.join(" > ") : node.name || node.type;
   }
 
-  // Start checking from all pages
-  figma.root.children.forEach((page) => {
+  // Start checking from all pages or specific page if pageId is provided
+  const pagesToSearch = pageId 
+    ? figma.root.children.filter((page) => page.id === pageId)
+    : figma.root.children;
+
+  pagesToSearch.forEach((page) => {
     if (page.type === "PAGE") {
       if (instancesOnly) {
         // When instancesOnly is true, only start from instances
@@ -237,9 +242,10 @@ export function findNodesWithBoundVariable(
  */
 export function getVariableUsageSummary(
   variable: Variable,
-  instancesOnly: boolean = false
+  instancesOnly: boolean = false,
+  pageId?: string | null
 ) {
-  const boundNodes = findNodesWithBoundVariable(variable, instancesOnly);
+  const boundNodes = findNodesWithBoundVariable(variable, instancesOnly, pageId);
 
   const summary = {
     totalNodes: boundNodes.length,

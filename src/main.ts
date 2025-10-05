@@ -6,8 +6,10 @@ import {
   GetColorVariablesHandler,
   FindBoundNodesHandler,
   GetCollectionsHandler,
+  GetPagesHandler,
   ColorVariable,
   VariableCollection,
+  Page,
 } from "./types";
 import {
   findNodesWithBoundVariable,
@@ -44,10 +46,12 @@ export default function () {
   on<GetCollectionsHandler>("GET_COLLECTIONS", function () {
     try {
       const localCollections = figma.variables.getLocalVariableCollections();
-      const collections: VariableCollection[] = localCollections.map((collection) => ({
-        id: collection.id,
-        name: collection.name,
-      }));
+      const collections: VariableCollection[] = localCollections.map(
+        (collection) => ({
+          id: collection.id,
+          name: collection.name,
+        })
+      );
       emit("COLLECTIONS_RESULT", collections);
     } catch (error) {
       console.error("Error fetching collections:", error);
@@ -55,121 +59,163 @@ export default function () {
     }
   });
 
-  const collectionCache = new Map<string, { defaultModeId: string; modes: { id: string; name: string }[] }>();
-
-  on<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function (options: { collectionId: string | null }) {
-    const { collectionId } = options;
+  on<GetPagesHandler>("GET_PAGES", function () {
     try {
-      // Get all variables including from remote collections
-      const localVariableCollections =
-        figma.variables.getLocalVariableCollections();
-      const colorVariables: ColorVariable[] = [];
-      const processedVariableIds = new Set<string>();
-
-      // Helper function to resolve variable alias
-      const resolveVariableValue = (
-        value: any,
-        modeId: string
-      ): RGBA | string => {
-        if (typeof value === "object" && value !== null && "r" in value) {
-          return value as RGBA;
-        } else if (
-          typeof value === "object" &&
-          value !== null &&
-          "type" in value &&
-          value.type === "VARIABLE_ALIAS"
-        ) {
-          try {
-            const referencedVariable = figma.variables.getVariableById(
-              value.id
-            );
-            if (
-              referencedVariable &&
-              referencedVariable.resolvedType === "COLOR"
-            ) {
-              const referencedValue = referencedVariable.valuesByMode[modeId];
-              if (
-                typeof referencedValue === "object" &&
-                referencedValue !== null &&
-                "r" in referencedValue
-              ) {
-                return referencedValue as RGBA;
-              } else {
-                return `→ ${referencedVariable.name}`;
-              }
-            }
-          } catch (error) {
-            console.error("Error resolving variable alias:", error);
-          }
-        }
-        return "Unresolved";
-      };
-
-      // Process local variables
-      const localVariables = figma.variables.getLocalVariables();
-      for (const variable of localVariables) {
-        if (
-          variable.resolvedType === "COLOR" &&
-          !processedVariableIds.has(variable.id)
-        ) {
-          if (collectionId && variable.variableCollectionId !== collectionId) {
-            continue;
-          }
-
-          // Get collection info for modes
-          let collectionInfo = collectionCache.get(variable.variableCollectionId);
-          if (!collectionInfo) {
-            const collection = figma.variables.getVariableCollectionById(variable.variableCollectionId);
-            if (collection) {
-              collectionInfo = {
-                defaultModeId: collection.defaultModeId,
-                modes: collection.modes.map(mode => ({ id: mode.modeId, name: mode.name })),
-              };
-              collectionCache.set(variable.variableCollectionId, collectionInfo);
-            }
-          }
-
-          const colorVar: ColorVariable = {
-            id: variable.id,
-            name: variable.name,
-            resolvedType: variable.resolvedType,
-            valuesByMode: {},
-            defaultModeId: collectionInfo?.defaultModeId || Object.keys(variable.valuesByMode)[0] || "",
-            modes: collectionInfo?.modes || [],
-            description: variable.description || "",
-            isLocal: true,
-          };
-
-          // Get values for each mode
-          for (const modeId of Object.keys(variable.valuesByMode)) {
-            const value = variable.valuesByMode[modeId];
-            colorVar.valuesByMode[modeId] = resolveVariableValue(value, modeId);
-          }
-
-          colorVariables.push(colorVar);
-          processedVariableIds.add(variable.id);
-        }
-      }
-
-
-
-      emit("COLOR_VARIABLES_RESULT", colorVariables);
+      const allPages = figma.root.children;
+      const pages: Page[] = allPages.map((page) => ({
+        id: page.id,
+        name: page.name,
+      }));
+      emit("PAGES_RESULT", pages);
     } catch (error) {
-      console.error("Error fetching color variables:", error);
-      emit("COLOR_VARIABLES_RESULT", []);
+      console.error("Error fetching pages:", error);
+      emit("PAGES_RESULT", []);
     }
   });
+
+  const collectionCache = new Map<
+    string,
+    { defaultModeId: string; modes: { id: string; name: string }[] }
+  >();
+
+  on<GetColorVariablesHandler>(
+    "GET_COLOR_VARIABLES",
+    function (options: { collectionId: string | null }) {
+      const { collectionId } = options;
+      try {
+        // Get all variables including from remote collections
+        const localVariableCollections =
+          figma.variables.getLocalVariableCollections();
+        const colorVariables: ColorVariable[] = [];
+        const processedVariableIds = new Set<string>();
+
+        // Helper function to resolve variable alias
+        const resolveVariableValue = (
+          value: any,
+          modeId: string
+        ): RGBA | string => {
+          if (typeof value === "object" && value !== null && "r" in value) {
+            return value as RGBA;
+          } else if (
+            typeof value === "object" &&
+            value !== null &&
+            "type" in value &&
+            value.type === "VARIABLE_ALIAS"
+          ) {
+            try {
+              const referencedVariable = figma.variables.getVariableById(
+                value.id
+              );
+              if (
+                referencedVariable &&
+                referencedVariable.resolvedType === "COLOR"
+              ) {
+                const referencedValue = referencedVariable.valuesByMode[modeId];
+                if (
+                  typeof referencedValue === "object" &&
+                  referencedValue !== null &&
+                  "r" in referencedValue
+                ) {
+                  return referencedValue as RGBA;
+                } else {
+                  return `→ ${referencedVariable.name}`;
+                }
+              }
+            } catch (error) {
+              console.error("Error resolving variable alias:", error);
+            }
+          }
+          return "Unresolved";
+        };
+
+        // Process local variables
+        const localVariables = figma.variables.getLocalVariables();
+        for (const variable of localVariables) {
+          if (
+            variable.resolvedType === "COLOR" &&
+            !processedVariableIds.has(variable.id)
+          ) {
+            if (
+              collectionId &&
+              variable.variableCollectionId !== collectionId
+            ) {
+              continue;
+            }
+
+            // Get collection info for modes
+            let collectionInfo = collectionCache.get(
+              variable.variableCollectionId
+            );
+            if (!collectionInfo) {
+              const collection = figma.variables.getVariableCollectionById(
+                variable.variableCollectionId
+              );
+              if (collection) {
+                collectionInfo = {
+                  defaultModeId: collection.defaultModeId,
+                  modes: collection.modes.map((mode) => ({
+                    id: mode.modeId,
+                    name: mode.name,
+                  })),
+                };
+                collectionCache.set(
+                  variable.variableCollectionId,
+                  collectionInfo
+                );
+              }
+            }
+
+            const colorVar: ColorVariable = {
+              id: variable.id,
+              name: variable.name,
+              resolvedType: variable.resolvedType,
+              valuesByMode: {},
+              defaultModeId:
+                collectionInfo?.defaultModeId ||
+                Object.keys(variable.valuesByMode)[0] ||
+                "",
+              modes: collectionInfo?.modes || [],
+              description: variable.description || "",
+              isLocal: true,
+            };
+
+            // Get values for each mode
+            for (const modeId of Object.keys(variable.valuesByMode)) {
+              const value = variable.valuesByMode[modeId];
+              colorVar.valuesByMode[modeId] = resolveVariableValue(
+                value,
+                modeId
+              );
+            }
+
+            colorVariables.push(colorVar);
+            processedVariableIds.add(variable.id);
+          }
+        }
+
+        emit("COLOR_VARIABLES_RESULT", colorVariables);
+      } catch (error) {
+        console.error("Error fetching color variables:", error);
+        emit("COLOR_VARIABLES_RESULT", []);
+      }
+    }
+  );
 
   on<FindBoundNodesHandler>(
     "FIND_BOUND_NODES",
     async function (options: {
       variableIds: string[];
+      pageId?: string | null;
     }) {
       try {
-        const { variableIds } = options;
+        const { variableIds, pageId } = options;
 
         console.log(
-          `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
+          `🔍 Finding bound nodes for ${variableIds.length} selected variables${
+            pageId
+              ? ` on page ${figma.getNodeById(pageId)?.name || pageId}`
+              : " on all pages"
+          }...`
         );
 
         // Load fonts with better error handling
@@ -188,8 +234,12 @@ export default function () {
           try {
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              const boundNodes = findNodesWithBoundVariable(variable, true);
-              const summary = getVariableUsageSummary(variable, true);
+              const boundNodes = findNodesWithBoundVariable(
+                variable,
+                true,
+                pageId
+              );
+              const summary = getVariableUsageSummary(variable, true, pageId);
 
               results.push({
                 variable,
@@ -208,7 +258,9 @@ export default function () {
         // Create visual table if we have results
         if (results.length > 0) {
           try {
-            console.log(`🎨 Creating result table for ${results.length} variables...`);
+            console.log(
+              `🎨 Creating result table for ${results.length} variables...`
+            );
             const resultTable = createResultTable(results);
             console.log(
               `📊 Successfully created visual result table with ${results.reduce(
@@ -221,15 +273,21 @@ export default function () {
             if (tableError instanceof Error) {
               console.error("Stack trace:", tableError.stack);
             }
-            
+
             // Fallback to console output
             console.log("📋 Falling back to console output:");
             results.forEach((result, index) => {
               console.log(
-                `${index + 1}. Variable: ${result.variable.name} - ${result.boundNodes.length} nodes found`
+                `${index + 1}. Variable: ${result.variable.name} - ${
+                  result.boundNodes.length
+                } nodes found`
               );
               result.boundNodes.forEach((boundNode, nodeIndex) => {
-                console.log(`   ${nodeIndex + 1}. ${boundNode.node.name} (${boundNode.node.type}) - ${boundNode.boundProperties.join(', ')}`);
+                console.log(
+                  `   ${nodeIndex + 1}. ${boundNode.node.name} (${
+                    boundNode.node.type
+                  }) - ${boundNode.boundProperties.join(", ")}`
+                );
               });
             });
           }
@@ -249,6 +307,6 @@ export default function () {
   });
   showUI({
     height: 800,
-    width: 300,
+    width: 520,
   });
 }

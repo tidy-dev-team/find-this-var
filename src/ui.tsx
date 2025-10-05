@@ -25,8 +25,11 @@ import {
   FindBoundNodesCompleteHandler,
   GetCollectionsHandler,
   CollectionsResultHandler,
+  GetPagesHandler,
+  PagesResultHandler,
   ColorVariable,
   VariableCollection,
+  Page,
 } from "./types";
 
 function Plugin() {
@@ -40,9 +43,12 @@ function Plugin() {
   const [collections, setCollections] = useState<VariableCollection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] =
     useState<string | null>(null);
+  const [pages, setPages] = useState<Page[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   useEffect(() => {
     emit<GetCollectionsHandler>("GET_COLLECTIONS");
+    emit<GetPagesHandler>("GET_PAGES");
 
     const unsubscribe1 = on<ColorVariablesResultHandler>(
       "COLOR_VARIABLES_RESULT",
@@ -69,10 +75,18 @@ function Plugin() {
       }
     );
 
+    const unsubscribe4 = on<PagesResultHandler>(
+      "PAGES_RESULT",
+      (pages: Page[]) => {
+        setPages(pages);
+      }
+    );
+
     return () => {
       unsubscribe1();
       unsubscribe2();
       unsubscribe3();
+      unsubscribe4();
     };
   }, []);
 
@@ -90,10 +104,12 @@ function Plugin() {
     []
   );
 
-  // Filter variables based on search query
-  const filteredVariables = colorVariables.filter((variable) =>
-    variable.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter variables based on search query and sort alphabetically
+  const filteredVariables = colorVariables
+    .filter((variable) =>
+      variable.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const handleVariableSelect = useCallback(
     (variableId: string, checked: boolean) => {
@@ -131,13 +147,21 @@ function Plugin() {
       setIsSearching(true);
       emit<FindBoundNodesHandler>("FIND_BOUND_NODES", {
         variableIds: selectedVariableIds,
+        pageId: selectedPageId,
       });
     }
-  }, [selectedVariables]);
+  }, [selectedVariables, selectedPageId]);
 
   const handleCollectionChange = useCallback(
     (event: { currentTarget: { value: string } }) => {
       setSelectedCollectionId(event.currentTarget.value || null);
+    },
+    []
+  );
+
+  const handlePageChange = useCallback(
+    (event: { currentTarget: { value: string } }) => {
+      setSelectedPageId(event.currentTarget.value || null);
     },
     []
   );
@@ -403,6 +427,26 @@ function Plugin() {
             )}
           </div>
           <VerticalSpace space="medium" />
+          {pages.length > 0 && (
+            <Fragment>
+              <Text>
+                <Muted>Select page to search:</Muted>
+              </Text>
+              <VerticalSpace space="extraSmall" />
+              <Dropdown
+                onChange={handlePageChange}
+                options={[
+                  { value: "", text: "All pages" },
+                  ...pages.map((page) => ({
+                    value: page.id,
+                    text: page.name,
+                  })),
+                ]}
+                value={selectedPageId || ""}
+              />
+              <VerticalSpace space="small" />
+            </Fragment>
+          )}
           <Button
             fullWidth
             onClick={handleGetSelected}

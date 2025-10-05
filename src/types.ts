@@ -29,6 +29,7 @@ export interface FindBoundNodesHandler extends EventHandler {
   name: "FIND_BOUND_NODES";
   handler: (options: {
     variableIds: string[];
+    pageId?: string | null;
   }) => void;
 }
 
@@ -64,4 +65,19 @@ export interface RGBA {
 export interface VariableCollection {
   id: string;
   name: string;
+}
+
+export interface Page {
+  id: string;
+  name: string;
+}
+
+export interface GetPagesHandler extends EventHandler {
+  name: "GET_PAGES";
+  handler: () => void;
+}
+
+export interface PagesResultHandler extends EventHandler {
+  name: "PAGES_RESULT";
+  handler: (pages: Page[]) => void;
 }
