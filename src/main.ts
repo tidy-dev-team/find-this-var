@@ -1,4 +1,4 @@
-import { emit, once, showUI } from "@create-figma-plugin/utilities";
+import { emit, once, on, showUI } from "@create-figma-plugin/utilities";
 
 import {
   CloseHandler,
@@ -39,7 +39,7 @@ export default function () {
     figma.closePlugin();
   });
 
-  once<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function () {
+  on<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function () {
     try {
       // Get all variables including from remote collections
       const localVariableCollections =
@@ -301,7 +301,7 @@ export default function () {
     }
   });
 
-  once<FindBoundNodesHandler>(
+  on<FindBoundNodesHandler>(
     "FIND_BOUND_NODES",
     async function (options: {
       variableIds: string[];
