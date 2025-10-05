@@ -22,6 +22,26 @@ export function findNodesWithBoundVariable(
 ): BoundNodeInfo[] {
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
+  const variableKey = variable.key;
+
+  /**
+   * Helper function to check if a variable alias matches our target variable
+   */
+  function isMatchingVariable(boundVar: VariableAlias): boolean {
+    if (boundVar.id === variableId) {
+      return true;
+    }
+    // Check by key for imported variables
+    try {
+      const referencedVar = figma.variables.getVariableById(boundVar.id);
+      if (referencedVar && referencedVar.key === variableKey) {
+        return true;
+      }
+    } catch (error) {
+      // Variable might not be accessible
+    }
+    return false;
+  }
 
   /**
    * Recursively check a node and its children for variable bindings
@@ -37,7 +57,7 @@ export function findNodesWithBoundVariable(
     if ("fills" in node && node.fills && Array.isArray(node.fills)) {
       node.fills.forEach((fill, index) => {
         if (fill.type === "SOLID" && fill.boundVariables?.color) {
-          if (fill.boundVariables.color.id === variableId) {
+          if (isMatchingVariable(fill.boundVariables.color)) {
             boundProperties.push(`fills[${index}].color`);
           }
         }
@@ -48,7 +68,7 @@ export function findNodesWithBoundVariable(
     if ("strokes" in node && node.strokes && Array.isArray(node.strokes)) {
       node.strokes.forEach((stroke, index) => {
         if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
-          if (stroke.boundVariables.color.id === variableId) {
+          if (isMatchingVariable(stroke.boundVariables.color)) {
             boundProperties.push(`strokes[${index}].color`);
           }
         }
@@ -58,36 +78,36 @@ export function findNodesWithBoundVariable(
     // Check basic boundVariables properties that are common across all node types
     if ("boundVariables" in node && node.boundVariables) {
       // Width and height (available on most nodes)
-      if (node.boundVariables.width?.id === variableId) {
+      if (node.boundVariables.width && isMatchingVariable(node.boundVariables.width)) {
         boundProperties.push("width");
       }
-      if (node.boundVariables.height?.id === variableId) {
+      if (node.boundVariables.height && isMatchingVariable(node.boundVariables.height)) {
         boundProperties.push("height");
       }
 
       // Layout properties (auto-layout nodes)
-      if (node.boundVariables.paddingLeft?.id === variableId) {
+      if (node.boundVariables.paddingLeft && isMatchingVariable(node.boundVariables.paddingLeft)) {
         boundProperties.push("paddingLeft");
       }
-      if (node.boundVariables.paddingRight?.id === variableId) {
+      if (node.boundVariables.paddingRight && isMatchingVariable(node.boundVariables.paddingRight)) {
         boundProperties.push("paddingRight");
       }
-      if (node.boundVariables.paddingTop?.id === variableId) {
+      if (node.boundVariables.paddingTop && isMatchingVariable(node.boundVariables.paddingTop)) {
         boundProperties.push("paddingTop");
       }
-      if (node.boundVariables.paddingBottom?.id === variableId) {
+      if (node.boundVariables.paddingBottom && isMatchingVariable(node.boundVariables.paddingBottom)) {
         boundProperties.push("paddingBottom");
       }
-      if (node.boundVariables.itemSpacing?.id === variableId) {
+      if (node.boundVariables.itemSpacing && isMatchingVariable(node.boundVariables.itemSpacing)) {
         boundProperties.push("itemSpacing");
       }
-      if (node.boundVariables.counterAxisSpacing?.id === variableId) {
+      if (node.boundVariables.counterAxisSpacing && isMatchingVariable(node.boundVariables.counterAxisSpacing)) {
         boundProperties.push("counterAxisSpacing");
       }
 
       // Text properties (text nodes only)
       if (node.type === "TEXT") {
-        if (node.boundVariables.characters?.id === variableId) {
+        if (node.boundVariables.characters && isMatchingVariable(node.boundVariables.characters)) {
           boundProperties.push("characters");
         }
       }
@@ -101,24 +121,24 @@ export function findNodesWithBoundVariable(
     if ("effects" in node && node.effects && Array.isArray(node.effects)) {
       node.effects.forEach((effect, index) => {
         if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-          if (effect.boundVariables?.color?.id === variableId) {
+          if (effect.boundVariables?.color && isMatchingVariable(effect.boundVariables.color)) {
             boundProperties.push(`effects[${index}].color`);
           }
-          if (effect.boundVariables?.offset?.x?.id === variableId) {
+          if (effect.boundVariables?.offset?.x && isMatchingVariable(effect.boundVariables.offset.x)) {
             boundProperties.push(`effects[${index}].offset.x`);
           }
-          if (effect.boundVariables?.offset?.y?.id === variableId) {
+          if (effect.boundVariables?.offset?.y && isMatchingVariable(effect.boundVariables.offset.y)) {
             boundProperties.push(`effects[${index}].offset.y`);
           }
-          if (effect.boundVariables?.radius?.id === variableId) {
+          if (effect.boundVariables?.radius && isMatchingVariable(effect.boundVariables.radius)) {
             boundProperties.push(`effects[${index}].radius`);
           }
-          if (effect.boundVariables?.spread?.id === variableId) {
+          if (effect.boundVariables?.spread && isMatchingVariable(effect.boundVariables.spread)) {
             boundProperties.push(`effects[${index}].spread`);
           }
         }
         if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-          if (effect.boundVariables?.radius?.id === variableId) {
+          if (effect.boundVariables?.radius && isMatchingVariable(effect.boundVariables.radius)) {
             boundProperties.push(`effects[${index}].radius`);
           }
         }
@@ -136,7 +156,8 @@ export function findNodesWithBoundVariable(
                 propValue &&
                 typeof propValue === "object" &&
                 "boundVariables" in propValue &&
-                propValue.boundVariables?.value?.id === variableId
+                propValue.boundVariables?.value &&
+                isMatchingVariable(propValue.boundVariables.value)
               ) {
                 boundProperties.push(`componentProperties.${propName}`);
               }
