@@ -5,7 +5,9 @@ import {
   CreateRectanglesHandler,
   GetColorVariablesHandler,
   FindBoundNodesHandler,
+  GetCollectionsHandler,
   ColorVariable,
+  VariableCollection,
 } from "./types";
 import {
   findNodesWithBoundVariable,
@@ -39,7 +41,22 @@ export default function () {
     figma.closePlugin();
   });
 
-  on<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function () {
+  on<GetCollectionsHandler>("GET_COLLECTIONS", function () {
+    try {
+      const localCollections = figma.variables.getLocalVariableCollections();
+      const collections: VariableCollection[] = localCollections.map((collection) => ({
+        id: collection.id,
+        name: collection.name,
+      }));
+      emit("COLLECTIONS_RESULT", collections);
+    } catch (error) {
+      console.error("Error fetching collections:", error);
+      emit("COLLECTIONS_RESULT", []);
+    }
+  });
+
+  on<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function (options: { collectionId: string | null }) {
+    const { collectionId } = options;
     try {
       // Get all variables including from remote collections
       const localVariableCollections =
@@ -93,6 +110,10 @@ export default function () {
           variable.resolvedType === "COLOR" &&
           !processedVariableIds.has(variable.id)
         ) {
+          if (collectionId && variable.variableCollectionId !== collectionId) {
+            continue;
+          }
+
           const colorVar: ColorVariable = {
             id: variable.id,
             name: variable.name,
@@ -112,187 +133,7 @@ export default function () {
         }
       }
 
-      // Try to find variables from external collections by checking all variables in the document
-      // This is a workaround since getRemoteVariables() doesn't exist
-      try {
-        const allCollections = figma.variables.getLocalVariableCollections();
 
-        // Process variables from local collections (some might be external)
-        for (const collection of allCollections) {
-          for (const variableId of collection.variableIds) {
-            try {
-              const variable = figma.variables.getVariableById(variableId);
-              if (
-                variable &&
-                variable.resolvedType === "COLOR" &&
-                !processedVariableIds.has(variable.id)
-              ) {
-                const isLocalVar = localVariables.some(
-                  (v) => v.id === variable.id
-                );
-
-                const colorVar: ColorVariable = {
-                  id: variable.id,
-                  name: variable.name,
-                  resolvedType: variable.resolvedType,
-                  valuesByMode: {},
-                  isLocal: isLocalVar,
-                  libraryName: !isLocalVar ? collection.name : undefined,
-                };
-
-                // Get values for each mode
-                for (const modeId of Object.keys(variable.valuesByMode)) {
-                  const value = variable.valuesByMode[modeId];
-                  colorVar.valuesByMode[modeId] = resolveVariableValue(
-                    value,
-                    modeId
-                  );
-                }
-
-                if (!processedVariableIds.has(variable.id)) {
-                  colorVariables.push(colorVar);
-                  processedVariableIds.add(variable.id);
-                }
-              }
-            } catch (error) {
-              // Skip variables that can't be accessed
-              continue;
-            }
-          }
-        }
-
-        // Additional scan: Look through all nodes to find external variable references
-        // This helps discover published variables that aren't in local collections
-        const discoveredVariableIds = new Set<string>();
-
-        const scanNodeForVariableReferences = (node: SceneNode): void => {
-          // Check fills for variable references
-          if ("fills" in node && node.fills && Array.isArray(node.fills)) {
-            node.fills.forEach((fill) => {
-              if (fill.type === "SOLID" && fill.boundVariables?.color) {
-                discoveredVariableIds.add(fill.boundVariables.color.id);
-              }
-            });
-          }
-
-          // Check strokes for variable references
-          if (
-            "strokes" in node &&
-            node.strokes &&
-            Array.isArray(node.strokes)
-          ) {
-            node.strokes.forEach((stroke) => {
-              if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
-                discoveredVariableIds.add(stroke.boundVariables.color.id);
-              }
-            });
-          }
-
-          // Check boundVariables for other properties
-          if ("boundVariables" in node && node.boundVariables) {
-            Object.values(node.boundVariables).forEach((variableAlias) => {
-              if (
-                variableAlias &&
-                typeof variableAlias === "object" &&
-                "id" in variableAlias &&
-                typeof variableAlias.id === "string"
-              ) {
-                discoveredVariableIds.add(variableAlias.id);
-              }
-            });
-          }
-
-          // Check effects for variable references
-          if (
-            "effects" in node &&
-            node.effects &&
-            Array.isArray(node.effects)
-          ) {
-            node.effects.forEach((effect) => {
-              if (effect.boundVariables?.color?.id) {
-                discoveredVariableIds.add(effect.boundVariables.color.id);
-              }
-              if (effect.boundVariables?.radius?.id) {
-                discoveredVariableIds.add(effect.boundVariables.radius.id);
-              }
-              if (effect.boundVariables?.offset?.x?.id) {
-                discoveredVariableIds.add(effect.boundVariables.offset.x.id);
-              }
-              if (effect.boundVariables?.offset?.y?.id) {
-                discoveredVariableIds.add(effect.boundVariables.offset.y.id);
-              }
-              if (effect.boundVariables?.spread?.id) {
-                discoveredVariableIds.add(effect.boundVariables.spread.id);
-              }
-            });
-          }
-
-          // Recursively check children
-          if ("children" in node && node.children) {
-            node.children.forEach((child) =>
-              scanNodeForVariableReferences(child)
-            );
-          }
-        };
-
-        // Scan all pages for variable references
-        figma.root.children.forEach((page) => {
-          if (page.type === "PAGE") {
-            page.children.forEach((child) =>
-              scanNodeForVariableReferences(child)
-            );
-          }
-        });
-
-        console.log(
-          `🔍 Discovered ${discoveredVariableIds.size} variable references in document`
-        );
-
-        // Process discovered variable IDs that weren't found in collections
-        Array.from(discoveredVariableIds).forEach((variableId) => {
-          if (!processedVariableIds.has(variableId)) {
-            try {
-              const variable = figma.variables.getVariableById(variableId);
-              if (variable && variable.resolvedType === "COLOR") {
-                const isLocalVar = localVariables.some(
-                  (v) => v.id === variable.id
-                );
-
-                console.log(
-                  `📥 Found external color variable: "${variable.name}" (${
-                    isLocalVar ? "local" : "external"
-                  })`
-                );
-
-                const colorVar: ColorVariable = {
-                  id: variable.id,
-                  name: variable.name,
-                  resolvedType: variable.resolvedType,
-                  valuesByMode: {},
-                  isLocal: isLocalVar,
-                  libraryName: !isLocalVar ? "External Library" : undefined,
-                };
-
-                // Get values for each mode
-                for (const modeId of Object.keys(variable.valuesByMode)) {
-                  const value = variable.valuesByMode[modeId];
-                  colorVar.valuesByMode[modeId] = resolveVariableValue(
-                    value,
-                    modeId
-                  );
-                }
-
-                colorVariables.push(colorVar);
-                processedVariableIds.add(variable.id);
-              }
-            } catch (error) {
-              console.warn(`Could not access variable ${variableId}:`, error);
-            }
-          }
-        });
-      } catch (error) {
-        console.warn("Could not access some variable collections:", error);
-      }
 
       emit("COLOR_VARIABLES_RESULT", colorVariables);
     } catch (error) {

@@ -3,6 +3,8 @@ import {
   Checkbox,
   Columns,
   Container,
+  Dropdown,
+  DropdownOption,
   Muted,
   render,
   Text,
@@ -11,7 +13,7 @@ import {
   VerticalSpace,
 } from "@create-figma-plugin/ui";
 import { emit, on } from "@create-figma-plugin/utilities";
-import { h } from "preact";
+import { h, Fragment } from "preact";
 import { useCallback, useState, useEffect } from "preact/hooks";
 
 import {
@@ -20,7 +22,10 @@ import {
   GetColorVariablesHandler,
   ColorVariablesResultHandler,
   FindBoundNodesHandler,
+  GetCollectionsHandler,
+  CollectionsResultHandler,
   ColorVariable,
+  VariableCollection,
 } from "./types";
 
 function Plugin() {
@@ -31,10 +36,13 @@ function Plugin() {
     new Set()
   );
   const [componentsOnly, setComponentsOnly] = useState<boolean>(true);
+  const [collections, setCollections] = useState<VariableCollection[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Listen for color variables result
-    const unsubscribe = on<ColorVariablesResultHandler>(
+    emit<GetCollectionsHandler>("GET_COLLECTIONS");
+
+    const unsubscribe1 = on<ColorVariablesResultHandler>(
       "COLOR_VARIABLES_RESULT",
       (variables: ColorVariable[]) => {
         setColorVariables(variables);
@@ -42,15 +50,28 @@ function Plugin() {
       }
     );
 
+    const unsubscribe2 = on<CollectionsResultHandler>(
+      "COLLECTIONS_RESULT",
+      (collections: VariableCollection[]) => {
+        setCollections(collections);
+        if (collections.length > 0 && selectedCollectionId === null) {
+          setSelectedCollectionId(collections[0].id);
+        }
+      }
+    );
+
     return () => {
-      unsubscribe();
+      unsubscribe1();
+      unsubscribe2();
     };
   }, []);
 
   const handleGetColorVariables = useCallback(() => {
     setIsLoading(true);
-    emit<GetColorVariablesHandler>("GET_COLOR_VARIABLES");
-  }, []);
+    emit<GetColorVariablesHandler>("GET_COLOR_VARIABLES", {
+      collectionId: selectedCollectionId,
+    });
+  }, [selectedCollectionId]);
 
   const handleSearchChange = useCallback(
     (event: { currentTarget: { value: string } }) => {
@@ -107,6 +128,13 @@ function Plugin() {
   const handleComponentsOnlyChange = useCallback(
     (event: { currentTarget: { checked: boolean } }) => {
       setComponentsOnly(event.currentTarget.checked);
+    },
+    []
+  );
+
+  const handleCollectionChange = useCallback(
+    (event: { currentTarget: { value: string } }) => {
+      setSelectedCollectionId(event.currentTarget.value || null);
     },
     []
   );
@@ -193,6 +221,26 @@ function Plugin() {
       style={{ height: "100vh", display: "flex", flexDirection: "column" }}
     >
       <VerticalSpace space="large" />
+      {collections.length > 0 && (
+        <Fragment>
+          <Text>
+            <Muted>Select collection:</Muted>
+          </Text>
+          <VerticalSpace space="extraSmall" />
+          <Dropdown
+            onChange={handleCollectionChange}
+            options={[
+              { value: "", text: "All collections" },
+              ...collections.map((collection) => ({
+                value: collection.id,
+                text: collection.name,
+              })),
+            ]}
+            value={selectedCollectionId || ""}
+          />
+          <VerticalSpace space="small" />
+        </Fragment>
+      )}
       <Button
         fullWidth
         onClick={handleGetColorVariables}

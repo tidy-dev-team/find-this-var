@@ -7,7 +7,17 @@ export interface CreateRectanglesHandler extends EventHandler {
 
 export interface GetColorVariablesHandler extends EventHandler {
   name: "GET_COLOR_VARIABLES";
+  handler: (options: { collectionId: string | null }) => void;
+}
+
+export interface GetCollectionsHandler extends EventHandler {
+  name: "GET_COLLECTIONS";
   handler: () => void;
+}
+
+export interface CollectionsResultHandler extends EventHandler {
+  name: "COLLECTIONS_RESULT";
+  handler: (collections: VariableCollection[]) => void;
 }
 
 export interface ColorVariablesResultHandler extends EventHandler {
@@ -42,4 +52,9 @@ export interface RGBA {
   g: number;
   b: number;
   a: number;
+}
+
+export interface VariableCollection {
+  id: string;
+  name: string;
 }
