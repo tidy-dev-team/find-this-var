@@ -20,57 +20,101 @@ export function createResultTable(results: VariableResult[]): FrameNode {
   console.log(`🎨 Creating result table for ${results.length} variables...`);
 
   try {
-    // Create main container frame
-    const mainFrame = figma.createFrame();
-    mainFrame.name = `Variable Usage Results ${new Date().toLocaleTimeString()}`;
-    mainFrame.layoutMode = "VERTICAL";
-    mainFrame.primaryAxisSizingMode = "AUTO";
-    mainFrame.counterAxisSizingMode = "AUTO";
-    mainFrame.paddingTop = 24;
-    mainFrame.paddingBottom = 24;
-    mainFrame.paddingLeft = 24;
-    mainFrame.paddingRight = 24;
-    mainFrame.itemSpacing = 24;
-    mainFrame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
-    mainFrame.cornerRadius = 12;
+    const tableContainer = figma.createFrame();
+    tableContainer.name = `Table_${results.map(r => r.variable.name).join('_')}`;
+    tableContainer.layoutMode = "VERTICAL";
+    tableContainer.primaryAxisSizingMode = "AUTO";
+    tableContainer.counterAxisSizingMode = "AUTO";
+    tableContainer.paddingTop = 20;
+    tableContainer.paddingBottom = 20;
+    tableContainer.paddingLeft = 20;
+    tableContainer.paddingRight = 20;
+    tableContainer.itemSpacing = 19;
+    tableContainer.fills = [];
+    tableContainer.cornerRadius = 8;
+    tableContainer.strokes = [{ type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } }];
+    tableContainer.strokeWeight = 1;
 
-    // Add to current page
-    figma.currentPage.appendChild(mainFrame);
-
-    // Process results with error handling for each variable
-    let successfulTables = 0;
-    results.forEach((result, resultIndex) => {
-      try {
-        console.log(
-          `Processing variable ${resultIndex + 1}/${results.length}: ${
-            result.variable.name
-          }`
-        );
-        const tableFrame = createSingleVariableTable(result, resultIndex);
-        mainFrame.appendChild(tableFrame);
-        successfulTables++;
-      } catch (error) {
-        console.error(
-          `Failed to create table for variable ${result.variable.name}:`,
-          error
-        );
-        // Continue with other variables
+    figma.currentPage.appendChild(tableContainer);
+    
+    results.forEach((result, idx) => {
+      const rowFrame = figma.createFrame();
+      rowFrame.name = `Row_${idx + 1}`;
+      rowFrame.layoutMode = "HORIZONTAL";
+      rowFrame.primaryAxisSizingMode = "AUTO";
+      rowFrame.counterAxisSizingMode = "AUTO";
+      rowFrame.itemSpacing = 0;
+      rowFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      rowFrame.cornerRadius = 8;
+      
+      const col1 = figma.createFrame();
+      col1.name = "Col_Header";
+      col1.layoutMode = "VERTICAL";
+      col1.primaryAxisSizingMode = "AUTO";
+      col1.counterAxisSizingMode = "FIXED";
+      col1.resize(200, 100);
+      col1.paddingTop = 16;
+      col1.paddingBottom = 16;
+      col1.paddingLeft = 16;
+      col1.paddingRight = 16;
+      col1.fills = [];
+      const headerFrame = createHeaderSection(
+        result.variable,
+        result.boundNodes.length,
+        result.instancesOnly
+      );
+      col1.appendChild(headerFrame);
+      rowFrame.appendChild(col1);
+      
+      const col2 = figma.createFrame();
+      col2.name = "Col_Description";
+      col2.layoutMode = "VERTICAL";
+      col2.primaryAxisSizingMode = "AUTO";
+      col2.counterAxisSizingMode = "FIXED";
+      col2.resize(150, 100);
+      col2.paddingTop = 16;
+      col2.paddingBottom = 16;
+      col2.paddingLeft = 16;
+      col2.paddingRight = 16;
+      col2.fills = [];
+      if (result.variable.description && result.variable.description.trim() !== "") {
+        const descriptionFrame = createDescriptionSection(result.variable.description);
+        col2.appendChild(descriptionFrame);
       }
+      rowFrame.appendChild(col2);
+      
+      const colorSamplesFrame = createColorSamplesSection(result.variable);
+      rowFrame.appendChild(colorSamplesFrame);
+      
+      const col4 = figma.createFrame();
+      col4.name = "Col_Nodes";
+      col4.layoutMode = "VERTICAL";
+      col4.primaryAxisSizingMode = "AUTO";
+      col4.counterAxisSizingMode = "FIXED";
+      col4.resize(284, 100);
+      col4.paddingTop = 16;
+      col4.paddingBottom = 16;
+      col4.paddingLeft = 16;
+      col4.paddingRight = 16;
+      col4.fills = [];
+      if (result.boundNodes.length > 0) {
+        const nodesFrame = createNodesSection(result.boundNodes);
+        col4.appendChild(nodesFrame);
+      }
+      rowFrame.appendChild(col4);
+      
+      tableContainer.appendChild(rowFrame);
     });
 
-    console.log(
-      `✅ Successfully created ${successfulTables}/${results.length} variable tables`
-    );
+    console.log(`✅ Successfully created table with ${results.length} variables`);
 
-    // Position the main frame
-    mainFrame.x = 100;
-    mainFrame.y = 100;
+    tableContainer.x = 100;
+    tableContainer.y = 100;
 
-    // Focus on the created frame
-    figma.viewport.scrollAndZoomIntoView([mainFrame]);
-    figma.currentPage.selection = [mainFrame];
+    figma.viewport.scrollAndZoomIntoView([tableContainer]);
+    figma.currentPage.selection = [tableContainer];
 
-    return mainFrame;
+    return tableContainer;
   } catch (error) {
     console.error("❌ Failed to create result table:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -78,58 +122,7 @@ export function createResultTable(results: VariableResult[]): FrameNode {
   }
 }
 
-/**
- * Creates a single variable result table
- */
-function createSingleVariableTable(
-  result: VariableResult,
-  index: number
-): FrameNode {
-  const { variable, boundNodes, summary, instancesOnly } = result;
 
-  // Create table frame - now horizontal layout
-  const tableFrame = figma.createFrame();
-  tableFrame.name = `Table_${variable.name}`;
-  tableFrame.layoutMode = "HORIZONTAL";
-  tableFrame.primaryAxisSizingMode = "AUTO";
-  tableFrame.counterAxisSizingMode = "AUTO";
-  tableFrame.paddingTop = 20;
-  tableFrame.paddingBottom = 20;
-  tableFrame.paddingLeft = 20;
-  tableFrame.paddingRight = 20;
-  tableFrame.itemSpacing = 16;
-  tableFrame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  tableFrame.cornerRadius = 8;
-  tableFrame.strokes = [{ type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } }];
-  tableFrame.strokeWeight = 1;
-  tableFrame.counterAxisAlignItems = "MIN";
-
-  // Header section (variable info only)
-  const headerFrame = createHeaderSection(
-    variable,
-    boundNodes.length,
-    instancesOnly
-  );
-  tableFrame.appendChild(headerFrame);
-
-  // Description section (if variable has description)
-  if (variable.description && variable.description.trim() !== "") {
-    const descriptionFrame = createDescriptionSection(variable.description);
-    tableFrame.appendChild(descriptionFrame);
-  }
-
-  // Color samples section
-  const colorSamplesFrame = createColorSamplesSection(variable);
-  tableFrame.appendChild(colorSamplesFrame);
-
-  // Nodes list section
-  if (boundNodes.length > 0) {
-    const nodesFrame = createNodesSection(boundNodes);
-    tableFrame.appendChild(nodesFrame);
-  }
-
-  return tableFrame;
-}
 
 /**
  * Gets all color values from a variable (all modes)
@@ -201,7 +194,6 @@ function createHeaderSection(
   headerFrame.itemSpacing = 4;
   headerFrame.fills = [];
 
-  // Variable info frame
   const variableInfoFrame = figma.createFrame();
   variableInfoFrame.name = "VariableInfo";
   variableInfoFrame.layoutMode = "VERTICAL";
@@ -210,23 +202,12 @@ function createHeaderSection(
   variableInfoFrame.itemSpacing = 4;
   variableInfoFrame.fills = [];
 
-  // Variable name
   const nameText = figma.createText();
   nameText.characters = variable.name;
   nameText.fontSize = 16;
   nameText.fontName = getFontName("Bold");
   nameText.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
   variableInfoFrame.appendChild(nameText);
-
-  // Usage count
-  const countText = figma.createText();
-  countText.characters = `Used in ${nodeCount} nodes${
-    instancesOnly ? " (instances only)" : ""
-  }`;
-  countText.fontSize = 14;
-  countText.fontName = getFontName("Regular");
-  countText.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
-  variableInfoFrame.appendChild(countText);
 
   headerFrame.appendChild(variableInfoFrame);
 
@@ -260,24 +241,25 @@ function createColorSamplesSection(variable: Variable): FrameNode {
   colorSamplesContainer.layoutMode = "HORIZONTAL";
   colorSamplesContainer.primaryAxisSizingMode = "AUTO";
   colorSamplesContainer.counterAxisSizingMode = "AUTO";
-  colorSamplesContainer.itemSpacing = 4;
+  colorSamplesContainer.itemSpacing = 0;
   colorSamplesContainer.fills = [];
 
-  // Get all color modes
   const variableColors = getVariableColors(variable);
   
-  // Create a color sample for each mode
   variableColors.forEach((modeColor) => {
     const modeFrame = figma.createFrame();
     modeFrame.name = `Mode_${modeColor.modeName}`;
     modeFrame.layoutMode = "VERTICAL";
     modeFrame.primaryAxisSizingMode = "AUTO";
-    modeFrame.counterAxisSizingMode = "AUTO";
+    modeFrame.counterAxisSizingMode = "FIXED";
+    modeFrame.resize(124, 100);
     modeFrame.itemSpacing = 8;
+    modeFrame.paddingTop = 16;
+    modeFrame.paddingBottom = 16;
+    modeFrame.paddingLeft = 16;
+    modeFrame.paddingRight = 16;
     modeFrame.fills = [];
-    modeFrame.primaryAxisAlignItems = "MIN";
     
-    // Mode name label (only if there are multiple modes)
     if (variableColors.length > 1) {
       const modeLabel = figma.createText();
       modeLabel.characters = modeColor.modeName;
@@ -287,7 +269,6 @@ function createColorSamplesSection(variable: Variable): FrameNode {
       modeFrame.appendChild(modeLabel);
     }
     
-    // Color rectangle - larger size
     const colorRect = figma.createRectangle();
     colorRect.name = `ColorSample_${modeColor.modeName}`;
     colorRect.resize(72, 32);
@@ -298,7 +279,6 @@ function createColorSamplesSection(variable: Variable): FrameNode {
     
     modeFrame.appendChild(colorRect);
     
-    // Color values frame
     const colorValuesFrame = figma.createFrame();
     colorValuesFrame.name = "ColorValues";
     colorValuesFrame.layoutMode = "VERTICAL";
@@ -307,7 +287,6 @@ function createColorSamplesSection(variable: Variable): FrameNode {
     colorValuesFrame.itemSpacing = 4;
     colorValuesFrame.fills = [];
     
-    // Hex value
     const hexText = figma.createText();
     hexText.characters = rgbToHex(modeColor.color.r, modeColor.color.g, modeColor.color.b);
     hexText.fontSize = 11;
@@ -315,7 +294,6 @@ function createColorSamplesSection(variable: Variable): FrameNode {
     hexText.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
     colorValuesFrame.appendChild(hexText);
     
-    // RGB value
     const rgbText = figma.createText();
     rgbText.characters = formatRGB(modeColor.color.r, modeColor.color.g, modeColor.color.b);
     rgbText.fontSize = 10;
@@ -530,20 +508,14 @@ function createNodeItem(nodeInfo: BoundNodeInfo, index: number): FrameNode {
   nodeFrame.fills = [{ type: "SOLID", color: { r: 0.97, g: 0.97, b: 0.97 } }];
   nodeFrame.cornerRadius = 6;
 
-  // Node title (clickable for all nodes)
   const titleText = figma.createText();
-  const linkIcon = "🔗"; // Use link icon for all nodes since they all get hyperlinks now
-  const titleContent = `${linkIcon} ${index}. ${targetNode.name || targetNode.type} (${
-    targetNode.type
-  }) [Page: ${pageName}]`;
+  const titleContent = `${targetNode.name || targetNode.type} [${pageName}]`;
   console.log(`📝 Creating text with content: "${titleContent}"`);
   
-  // Set text properties
   titleText.fontSize = 13;
   titleText.fontName = getFontName("Medium");
-  titleText.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.4, b: 0.8 } }]; // Blue color for all linked text
+  titleText.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.4, b: 0.8 } }];
 
-  // Set characters after properties
   titleText.characters = titleContent;
   console.log(
     `✅ Text created successfully with ${titleText.characters.length} characters`
