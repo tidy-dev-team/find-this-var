@@ -12,12 +12,12 @@ export interface BoundNodeInfo {
 /**
  * Recursively traverses all nodes in the document to find where a variable is used
  * @param variable - The variable to search for
- * @param componentsOnly - If true, only search within components (COMPONENT and INSTANCE nodes)
+ * @param instancesOnly - If true, only search within INSTANCE nodes
  * @returns Array of nodes and properties where the variable is bound
  */
 export function findNodesWithBoundVariable(
   variable: Variable,
-  componentsOnly: boolean = false
+  instancesOnly: boolean = false
 ): BoundNodeInfo[] {
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
@@ -197,18 +197,18 @@ export function findNodesWithBoundVariable(
   // Start checking from all pages
   figma.root.children.forEach((page) => {
     if (page.type === "PAGE") {
-      if (componentsOnly) {
-        // When componentsOnly is true, only start from components and instances
-        const findComponentsInNode = (node: SceneNode): void => {
-          if (node.type === "COMPONENT" || node.type === "INSTANCE") {
+      if (instancesOnly) {
+        // When instancesOnly is true, only start from instances
+        const findInstancesInNode = (node: SceneNode): void => {
+          if (node.type === "INSTANCE") {
             checkNode(node);
           }
-          // Continue searching for components in children
+          // Continue searching for instances in children
           if ("children" in node && node.children) {
-            node.children.forEach((child) => findComponentsInNode(child));
+            node.children.forEach((child) => findInstancesInNode(child));
           }
         };
-        page.children.forEach((child) => findComponentsInNode(child));
+        page.children.forEach((child) => findInstancesInNode(child));
       } else {
         // Normal behavior - check all nodes
         page.children.forEach((child) => checkNode(child));
@@ -222,14 +222,14 @@ export function findNodesWithBoundVariable(
 /**
  * Helper function to get a summary of where a variable is used
  * @param variable - The variable to analyze
- * @param componentsOnly - If true, only search within components
+ * @param instancesOnly - If true, only search within instances
  * @returns Object with usage statistics and node list
  */
 export function getVariableUsageSummary(
   variable: Variable,
-  componentsOnly: boolean = false
+  instancesOnly: boolean = false
 ) {
-  const boundNodes = findNodesWithBoundVariable(variable, componentsOnly);
+  const boundNodes = findNodesWithBoundVariable(variable, instancesOnly);
 
   const summary = {
     totalNodes: boundNodes.length,

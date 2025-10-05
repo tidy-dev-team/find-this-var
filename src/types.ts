@@ -29,7 +29,6 @@ export interface FindBoundNodesHandler extends EventHandler {
   name: "FIND_BOUND_NODES";
   handler: (options: {
     variableIds: string[];
-    componentsOnly: boolean;
   }) => void;
 }
 

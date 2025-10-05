@@ -8,7 +8,7 @@ interface VariableResult {
     nodesByType: Record<string, number>;
     propertyUsage: Record<string, number>;
   };
-  componentsOnly: boolean;
+  instancesOnly: boolean;
 }
 
 /**
@@ -85,7 +85,7 @@ function createSingleVariableTable(
   result: VariableResult,
   index: number
 ): FrameNode {
-  const { variable, boundNodes, summary, componentsOnly } = result;
+  const { variable, boundNodes, summary, instancesOnly } = result;
 
   // Create table frame
   const tableFrame = figma.createFrame();
@@ -108,7 +108,7 @@ function createSingleVariableTable(
   const headerFrame = createHeaderSection(
     variable,
     boundNodes.length,
-    componentsOnly
+    instancesOnly
   );
   tableFrame.appendChild(headerFrame);
 
@@ -159,7 +159,7 @@ function getVariableColor(variable: Variable): {
 function createHeaderSection(
   variable: Variable,
   nodeCount: number,
-  componentsOnly: boolean
+  instancesOnly: boolean
 ): FrameNode {
   const headerFrame = figma.createFrame();
   headerFrame.name = "Header";
@@ -206,7 +206,7 @@ function createHeaderSection(
   // Usage count
   const countText = figma.createText();
   countText.characters = `Used in ${nodeCount} nodes${
-    componentsOnly ? " (components only)" : ""
+    instancesOnly ? " (instances only)" : ""
   }`;
   countText.fontSize = 14;
   countText.fontName = getFontName("Regular");

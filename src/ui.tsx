@@ -35,7 +35,6 @@ function Plugin() {
   const [selectedVariables, setSelectedVariables] = useState<Set<string>>(
     new Set()
   );
-  const [componentsOnly, setComponentsOnly] = useState<boolean>(true);
   const [collections, setCollections] = useState<VariableCollection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
 
@@ -120,17 +119,9 @@ function Plugin() {
       );
       emit<FindBoundNodesHandler>("FIND_BOUND_NODES", {
         variableIds: selectedVariableIds,
-        componentsOnly,
       });
     }
-  }, [selectedVariables, componentsOnly]);
-
-  const handleComponentsOnlyChange = useCallback(
-    (event: { currentTarget: { checked: boolean } }) => {
-      setComponentsOnly(event.currentTarget.checked);
-    },
-    []
-  );
+  }, [selectedVariables]);
 
   const handleCollectionChange = useCallback(
     (event: { currentTarget: { value: string } }) => {
@@ -286,14 +277,6 @@ function Plugin() {
               <div style={{ marginBottom: "8px" }}>
                 <Checkbox onChange={handleSelectAll} value={isAllSelected}>
                   <Text>Select all ({selectedVariables.size} selected)</Text>
-                </Checkbox>
-              </div>
-              <div style={{ marginBottom: "8px" }}>
-                <Checkbox
-                  onChange={handleComponentsOnlyChange}
-                  value={componentsOnly}
-                >
-                  <Text>Components only</Text>
                 </Checkbox>
               </div>
             </div>

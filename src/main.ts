@@ -146,10 +146,9 @@ export default function () {
     "FIND_BOUND_NODES",
     async function (options: {
       variableIds: string[];
-      componentsOnly: boolean;
     }) {
       try {
-        const { variableIds, componentsOnly } = options;
+        const { variableIds } = options;
 
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables...`
@@ -171,17 +170,14 @@ export default function () {
           try {
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              const boundNodes = findNodesWithBoundVariable(
-                variable,
-                componentsOnly
-              );
-              const summary = getVariableUsageSummary(variable, componentsOnly);
+              const boundNodes = findNodesWithBoundVariable(variable, true);
+              const summary = getVariableUsageSummary(variable, true);
 
               results.push({
                 variable,
                 boundNodes,
                 summary,
-                componentsOnly,
+                instancesOnly: true,
               });
             } else {
               console.log(`❌ Variable with ID ${variableId} not found`);
