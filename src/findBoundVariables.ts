@@ -28,6 +28,8 @@ export function findNodesWithBoundVariable(
   function checkNode(node: SceneNode): void {
     const boundProperties: string[] = [];
 
+    try {
+
     // Check all nodes normally since filtering is done at the root level
 
     // Check fills for variable bindings
@@ -123,23 +125,27 @@ export function findNodesWithBoundVariable(
     }
 
     // Check component properties (for instances)
-    if (
-      node.type === "INSTANCE" &&
-      "componentProperties" in node &&
-      node.componentProperties
-    ) {
-      Object.entries(node.componentProperties).forEach(
-        ([propName, propValue]) => {
-          if (
-            propValue &&
-            typeof propValue === "object" &&
-            "boundVariables" in propValue &&
-            propValue.boundVariables?.value?.id === variableId
-          ) {
-            boundProperties.push(`componentProperties.${propName}`);
-          }
+    if (node.type === "INSTANCE" && "componentProperties" in node) {
+      try {
+        const componentProperties = node.componentProperties;
+        if (componentProperties) {
+          Object.entries(componentProperties).forEach(
+            ([propName, propValue]) => {
+              if (
+                propValue &&
+                typeof propValue === "object" &&
+                "boundVariables" in propValue &&
+                propValue.boundVariables?.value?.id === variableId
+              ) {
+                boundProperties.push(`componentProperties.${propName}`);
+              }
+            }
+          );
         }
-      );
+      } catch (error) {
+        // Skip instances with component errors
+        console.warn(`Skipping node ${node.id} due to component property error:`, error);
+      }
     }
 
     // If any properties are bound to this variable, add the node to results
@@ -155,6 +161,10 @@ export function findNodesWithBoundVariable(
     // Recursively check children
     if ("children" in node && node.children) {
       node.children.forEach((child) => checkNode(child));
+    }
+    } catch (error) {
+      // Skip nodes that throw errors during property access
+      console.warn(`Skipping node ${node.id} (${node.name}) due to error:`, error);
     }
   }
 

@@ -22,6 +22,7 @@ import {
   GetColorVariablesHandler,
   ColorVariablesResultHandler,
   FindBoundNodesHandler,
+  FindBoundNodesCompleteHandler,
   GetCollectionsHandler,
   CollectionsResultHandler,
   ColorVariable,
@@ -31,12 +32,14 @@ import {
 function Plugin() {
   const [colorVariables, setColorVariables] = useState<ColorVariable[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedVariables, setSelectedVariables] = useState<Set<string>>(
     new Set()
   );
   const [collections, setCollections] = useState<VariableCollection[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] =
+    useState<string | null>(null);
 
   useEffect(() => {
     emit<GetCollectionsHandler>("GET_COLLECTIONS");
@@ -59,9 +62,17 @@ function Plugin() {
       }
     );
 
+    const unsubscribe3 = on<FindBoundNodesCompleteHandler>(
+      "FIND_BOUND_NODES_COMPLETE",
+      () => {
+        setIsSearching(false);
+      }
+    );
+
     return () => {
       unsubscribe1();
       unsubscribe2();
+      unsubscribe3();
     };
   }, []);
 
@@ -117,6 +128,7 @@ function Plugin() {
       console.log(
         `🚀 Finding bound nodes for ${selectedVariableIds.length} selected variables...`
       );
+      setIsSearching(true);
       emit<FindBoundNodesHandler>("FIND_BOUND_NODES", {
         variableIds: selectedVariableIds,
       });
@@ -152,27 +164,26 @@ function Plugin() {
   const getColorPreview = (
     variable: ColorVariable
   ): { color: string; isAlias: boolean } => {
-    // Get the first mode's color value for preview
-    const modeIds = Object.keys(variable.valuesByMode);
-    if (modeIds.length > 0) {
-      const firstModeValue = variable.valuesByMode[modeIds[0]];
-
+    // Use the default mode's color value for preview
+    const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
+    
+    if (defaultModeValue) {
       // Check if it's an RGBA color
       if (
-        typeof firstModeValue === "object" &&
-        firstModeValue !== null &&
-        "r" in firstModeValue
+        typeof defaultModeValue === "object" &&
+        defaultModeValue !== null &&
+        "r" in defaultModeValue
       ) {
         return {
           color: formatColor(
-            firstModeValue as { r: number; g: number; b: number; a: number }
+            defaultModeValue as { r: number; g: number; b: number; a: number }
           ),
           isAlias: false,
         };
       }
 
       // If it's a string (variable alias), return a default color but mark as alias
-      if (typeof firstModeValue === "string") {
+      if (typeof defaultModeValue === "string") {
         return {
           color: "#cccccc", // Light gray for aliases
           isAlias: true,
@@ -183,24 +194,24 @@ function Plugin() {
   };
 
   const getDisplayValue = (variable: ColorVariable): string => {
-    const modeIds = Object.keys(variable.valuesByMode);
-    if (modeIds.length > 0) {
-      const firstModeValue = variable.valuesByMode[modeIds[0]];
-
+    // Use the default mode's value for display
+    const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
+    
+    if (defaultModeValue) {
       // Check if it's an RGBA color
       if (
-        typeof firstModeValue === "object" &&
-        firstModeValue !== null &&
-        "r" in firstModeValue
+        typeof defaultModeValue === "object" &&
+        defaultModeValue !== null &&
+        "r" in defaultModeValue
       ) {
         return formatColor(
-          firstModeValue as { r: number; g: number; b: number; a: number }
+          defaultModeValue as { r: number; g: number; b: number; a: number }
         );
       }
 
       // If it's a string (variable alias), return the string
-      if (typeof firstModeValue === "string") {
-        return firstModeValue;
+      if (typeof defaultModeValue === "string") {
+        return defaultModeValue;
       }
     }
     return "No value";
@@ -395,10 +406,47 @@ function Plugin() {
           <Button
             fullWidth
             onClick={handleGetSelected}
-            disabled={selectedVariables.size === 0}
+            disabled={selectedVariables.size === 0 || isSearching}
           >
-            Find Bound Nodes ({selectedVariables.size} selected)
+            {isSearching
+              ? "Searching..."
+              : `Find Bound Nodes (${selectedVariables.size} selected)`}
           </Button>
+          {isSearching && (
+            <Fragment>
+              <VerticalSpace space="small" />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                }}
+              >
+                <div
+                  style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "2px solid #e0e0e0",
+                    borderTop: "2px solid #2196f3",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                  }}
+                ></div>
+                <Text>
+                  <Muted>Searching through instances...</Muted>
+                </Text>
+              </div>
+              <style>
+                {`
+                  @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                `}
+              </style>
+            </Fragment>
+          )}
           <VerticalSpace space="medium" />
         </div>
       )}

@@ -55,6 +55,8 @@ export default function () {
     }
   });
 
+  const collectionCache = new Map<string, { defaultModeId: string; modes: { id: string; name: string }[] }>();
+
   on<GetColorVariablesHandler>("GET_COLOR_VARIABLES", function (options: { collectionId: string | null }) {
     const { collectionId } = options;
     try {
@@ -114,11 +116,27 @@ export default function () {
             continue;
           }
 
+          // Get collection info for modes
+          let collectionInfo = collectionCache.get(variable.variableCollectionId);
+          if (!collectionInfo) {
+            const collection = figma.variables.getVariableCollectionById(variable.variableCollectionId);
+            if (collection) {
+              collectionInfo = {
+                defaultModeId: collection.defaultModeId,
+                modes: collection.modes.map(mode => ({ id: mode.modeId, name: mode.name })),
+              };
+              collectionCache.set(variable.variableCollectionId, collectionInfo);
+            }
+          }
+
           const colorVar: ColorVariable = {
             id: variable.id,
             name: variable.name,
             resolvedType: variable.resolvedType,
             valuesByMode: {},
+            defaultModeId: collectionInfo?.defaultModeId || Object.keys(variable.valuesByMode)[0] || "",
+            modes: collectionInfo?.modes || [],
+            description: variable.description || "",
             isLocal: true,
           };
 
@@ -220,6 +238,8 @@ export default function () {
         }
       } catch (error) {
         console.error("❌ Error finding bound nodes:", error);
+      } finally {
+        emit("FIND_BOUND_NODES_COMPLETE");
       }
     }
   );

@@ -112,6 +112,12 @@ function createSingleVariableTable(
   );
   tableFrame.appendChild(headerFrame);
 
+  // Description section (if variable has description)
+  if (variable.description && variable.description.trim() !== "") {
+    const descriptionFrame = createDescriptionSection(variable.description);
+    tableFrame.appendChild(descriptionFrame);
+  }
+
   // Nodes list section
   if (boundNodes.length > 0) {
     const nodesFrame = createNodesSection(boundNodes);
@@ -122,35 +128,57 @@ function createSingleVariableTable(
 }
 
 /**
- * Gets the color value from a variable (first mode)
+ * Gets all color values from a variable (all modes)
  */
-function getVariableColor(variable: Variable): {
-  r: number;
-  g: number;
-  b: number;
-} {
-  const modeIds = Object.keys(variable.valuesByMode);
-  if (modeIds.length > 0) {
-    const firstModeValue = variable.valuesByMode[modeIds[0]];
-
-    // Check if it's an RGBA color
-    if (
-      typeof firstModeValue === "object" &&
-      firstModeValue !== null &&
-      "r" in firstModeValue
-    ) {
-      const rgba = firstModeValue as {
-        r: number;
-        g: number;
-        b: number;
-        a: number;
-      };
-      return { r: rgba.r, g: rgba.g, b: rgba.b };
+function getVariableColors(variable: Variable): Array<{
+  modeId: string;
+  modeName: string;
+  color: { r: number; g: number; b: number };
+}> {
+  const colors: Array<{
+    modeId: string;
+    modeName: string;
+    color: { r: number; g: number; b: number };
+  }> = [];
+  
+  // Get the collection to access mode names
+  const collection = figma.variables.getVariableCollectionById(variable.variableCollectionId);
+  
+  if (collection) {
+    for (const mode of collection.modes) {
+      const modeValue = variable.valuesByMode[mode.modeId];
+      
+      // Check if it's an RGBA color
+      if (
+        typeof modeValue === "object" &&
+        modeValue !== null &&
+        "r" in modeValue
+      ) {
+        const rgba = modeValue as {
+          r: number;
+          g: number;
+          b: number;
+          a: number;
+        };
+        colors.push({
+          modeId: mode.modeId,
+          modeName: mode.name,
+          color: { r: rgba.r, g: rgba.g, b: rgba.b },
+        });
+      }
     }
   }
-
-  // Fallback to gray if can't resolve color
-  return { r: 0.5, g: 0.5, b: 0.5 };
+  
+  // Fallback if no valid colors found
+  if (colors.length === 0) {
+    colors.push({
+      modeId: "default",
+      modeName: "Default",
+      color: { r: 0.5, g: 0.5, b: 0.5 },
+    });
+  }
+  
+  return colors;
 }
 
 /**
@@ -170,21 +198,53 @@ function createHeaderSection(
   headerFrame.counterAxisAlignItems = "CENTER";
   headerFrame.fills = [];
 
-  // Color sample rectangle
-  const colorRect = figma.createRectangle();
-  colorRect.name = "ColorSample";
-  colorRect.resize(40, 24);
-  colorRect.cornerRadius = 6;
+  // Get all color modes
+  const variableColors = getVariableColors(variable);
+  
+  // Create color samples container
+  const colorSamplesFrame = figma.createFrame();
+  colorSamplesFrame.name = "ColorSamples";
+  colorSamplesFrame.layoutMode = "VERTICAL";
+  colorSamplesFrame.primaryAxisSizingMode = "AUTO";
+  colorSamplesFrame.counterAxisSizingMode = "AUTO";
+  colorSamplesFrame.itemSpacing = 4;
+  colorSamplesFrame.fills = [];
+  
+  // Create a color sample for each mode
+  variableColors.forEach((modeColor, index) => {
+    const modeFrame = figma.createFrame();
+    modeFrame.name = `Mode_${modeColor.modeName}`;
+    modeFrame.layoutMode = "HORIZONTAL";
+    modeFrame.primaryAxisSizingMode = "AUTO";
+    modeFrame.counterAxisSizingMode = "AUTO";
+    modeFrame.itemSpacing = 8;
+    modeFrame.fills = [];
+    
+    // Color rectangle
+    const colorRect = figma.createRectangle();
+    colorRect.name = `ColorSample_${modeColor.modeName}`;
+    colorRect.resize(40, 24);
+    colorRect.cornerRadius = 6;
+    colorRect.fills = [{ type: "SOLID", color: modeColor.color }];
+    colorRect.strokes = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
+    colorRect.strokeWeight = 1;
+    
+    modeFrame.appendChild(colorRect);
+    
+    // Mode name label (only if there are multiple modes)
+    if (variableColors.length > 1) {
+      const modeLabel = figma.createText();
+      modeLabel.characters = modeColor.modeName;
+      modeLabel.fontSize = 11;
+      modeLabel.fontName = getFontName("Regular");
+      modeLabel.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }];
+      modeFrame.appendChild(modeLabel);
+    }
+    
+    colorSamplesFrame.appendChild(modeFrame);
+  });
 
-  // Get the variable color
-  const variableColor = getVariableColor(variable);
-  colorRect.fills = [{ type: "SOLID", color: variableColor }];
-
-  // Add subtle border
-  colorRect.strokes = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
-  colorRect.strokeWeight = 1;
-
-  headerFrame.appendChild(colorRect);
+  headerFrame.appendChild(colorSamplesFrame);
 
   // Variable info section (vertical layout for name and count)
   const variableInfoFrame = figma.createFrame();
@@ -216,6 +276,43 @@ function createHeaderSection(
   headerFrame.appendChild(variableInfoFrame);
 
   return headerFrame;
+}
+
+/**
+ * Creates the description section
+ */
+function createDescriptionSection(description: string): FrameNode {
+  const descriptionFrame = figma.createFrame();
+  descriptionFrame.name = "Description";
+  descriptionFrame.layoutMode = "VERTICAL";
+  descriptionFrame.primaryAxisSizingMode = "AUTO";
+  descriptionFrame.counterAxisSizingMode = "AUTO";
+  descriptionFrame.itemSpacing = 8;
+  descriptionFrame.fills = [];
+
+  // Description title
+  const titleText = figma.createText();
+  titleText.characters = "Description:";
+  titleText.fontSize = 13;
+  titleText.fontName = getFontName("Bold");
+  titleText.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
+  descriptionFrame.appendChild(titleText);
+
+  // Description content
+  const contentText = figma.createText();
+  contentText.characters = description;
+  contentText.fontSize = 12;
+  contentText.fontName = getFontName("Regular");
+  contentText.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }];
+  contentText.layoutAlign = "STRETCH";
+  
+  // Enable text wrapping
+  contentText.textAutoResize = "HEIGHT";
+  contentText.resize(342, contentText.height); // Match the table width minus padding (382 - 40)
+  
+  descriptionFrame.appendChild(contentText);
+
+  return descriptionFrame;
 }
 
 /**

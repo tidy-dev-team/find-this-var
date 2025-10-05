@@ -32,6 +32,11 @@ export interface FindBoundNodesHandler extends EventHandler {
   }) => void;
 }
 
+export interface FindBoundNodesCompleteHandler extends EventHandler {
+  name: "FIND_BOUND_NODES_COMPLETE";
+  handler: () => void;
+}
+
 export interface CloseHandler extends EventHandler {
   name: "CLOSE";
   handler: () => void;
@@ -42,6 +47,9 @@ export interface ColorVariable {
   name: string;
   resolvedType: string;
   valuesByMode: { [key: string]: RGBA | string };
+  defaultModeId: string;
+  modes: { id: string; name: string }[];
+  description: string;
   isLocal: boolean;
   libraryName?: string;
 }
