@@ -19,7 +19,7 @@
       "figma"
     ],
     "id": "something-something",
-    "name": "Find this var",
+    "name": "Token tracker",
     "main": "src/main.ts",
     "ui": "src/ui.tsx"
   }

@@ -27,6 +27,9 @@ export function findNodesWithBoundVariable(
   // Cache for variable IDs to keys - prevents repeated API calls
   const variableKeyCache = new Map<string, string>();
   variableKeyCache.set(variableId, variableKey);
+  
+  // Track instances we've already added to avoid adding nested instances
+  const processedInstances = new Set<string>();
 
   /**
    * Helper function to check if a variable alias matches our target variable
@@ -60,6 +63,26 @@ export function findNodesWithBoundVariable(
     
     // Compare keys
     return cachedKey === variableKey;
+  }
+
+  /**
+   * Find the top-level instance that contains this node
+   */
+  function findTopLevelInstance(node: SceneNode): InstanceNode | null {
+    let topInstance: InstanceNode | null = null;
+    let currentNode: BaseNode | null = node;
+    
+    while (currentNode && currentNode.parent) {
+      if (currentNode.type === "INSTANCE") {
+        topInstance = currentNode as InstanceNode;
+      }
+      if (currentNode.parent.type === "PAGE") {
+        break;
+      }
+      currentNode = currentNode.parent;
+    }
+    
+    return topInstance;
   }
 
   /**
@@ -191,12 +214,31 @@ export function findNodesWithBoundVariable(
 
     // If any properties are bound to this variable, add the node to results
     if (boundProperties.length > 0) {
-      boundNodes.push({
-        node,
-        boundProperties,
-        propertyPath: getNodePath(node),
-        pageName: getNodePage(node),
-      });
+      if (instancesOnly) {
+        // Find the top-level instance containing this node
+        const topInstance = findTopLevelInstance(node);
+        
+        if (topInstance) {
+          // Only add if we haven't already processed this instance
+          if (!processedInstances.has(topInstance.id)) {
+            processedInstances.add(topInstance.id);
+            boundNodes.push({
+              node: topInstance,
+              boundProperties,
+              propertyPath: getNodePath(topInstance),
+              pageName: getNodePage(topInstance),
+            });
+          }
+        }
+      } else {
+        // Normal mode - add the node itself
+        boundNodes.push({
+          node,
+          boundProperties,
+          propertyPath: getNodePath(node),
+          pageName: getNodePage(node),
+        });
+      }
     }
 
     // Recursively check children
