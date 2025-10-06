@@ -23,6 +23,10 @@ export function findNodesWithBoundVariable(
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
   const variableKey = variable.key;
+  
+  // Cache for variable IDs to keys - prevents repeated API calls
+  const variableKeyCache = new Map<string, string>();
+  variableKeyCache.set(variableId, variableKey);
 
   /**
    * Helper function to check if a variable alias matches our target variable
@@ -31,16 +35,31 @@ export function findNodesWithBoundVariable(
     if (boundVar.id === variableId) {
       return true;
     }
-    // Check by key for imported variables
-    try {
-      const referencedVar = figma.variables.getVariableById(boundVar.id);
-      if (referencedVar && referencedVar.key === variableKey) {
-        return true;
+    
+    // Check cache first
+    let cachedKey = variableKeyCache.get(boundVar.id);
+    
+    if (cachedKey === undefined) {
+      // Not in cache, fetch once and cache it
+      try {
+        const referencedVar = figma.variables.getVariableById(boundVar.id);
+        if (referencedVar) {
+          cachedKey = referencedVar.key;
+          variableKeyCache.set(boundVar.id, cachedKey);
+        } else {
+          // Cache null result to avoid repeated lookups
+          variableKeyCache.set(boundVar.id, '');
+          return false;
+        }
+      } catch (error) {
+        // Cache failed lookup
+        variableKeyCache.set(boundVar.id, '');
+        return false;
       }
-    } catch (error) {
-      // Variable might not be accessible
     }
-    return false;
+    
+    // Compare keys
+    return cachedKey === variableKey;
   }
 
   /**
@@ -207,6 +226,22 @@ export function findNodesWithBoundVariable(
   }
 
   /**
+   * Get the page ID where a node is located
+   */
+  function getNodePageId(node: SceneNode): string | null {
+    let currentNode: BaseNode | null = node;
+
+    while (currentNode && currentNode.parent) {
+      if (currentNode.parent.type === "PAGE") {
+        return currentNode.parent.id;
+      }
+      currentNode = currentNode.parent;
+    }
+
+    return null;
+  }
+
+  /**
    * Get the path to a node (for debugging/display purposes)
    */
   function getNodePath(node: SceneNode): string {
@@ -231,8 +266,18 @@ export function findNodesWithBoundVariable(
     ? figma.root.children.filter((page) => page.id === pageId)
     : figma.root.children;
 
+  console.log(`🔍 Searching in ${pagesToSearch.length} page(s)${pageId ? ` (filtered by pageId: ${pageId})` : ' (all pages)'}`);
+  
+  if (pageId && pagesToSearch.length === 0) {
+    console.warn(`⚠️ No page found with ID: ${pageId}`);
+    return boundNodes;
+  }
+
+  const startTime = Date.now();
+
   pagesToSearch.forEach((page) => {
     if (page.type === "PAGE") {
+      console.log(`  📄 Searching page: "${page.name}" (${page.id})`);
       if (instancesOnly) {
         // When instancesOnly is true, only start from instances
         const findInstancesInNode = (node: SceneNode): void => {
@@ -251,6 +296,10 @@ export function findNodesWithBoundVariable(
       }
     }
   });
+
+  const endTime = Date.now();
+  const searchTime = endTime - startTime;
+  console.log(`✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes. Cached ${variableKeyCache.size} unique variable IDs.`);
 
   return boundNodes;
 }
