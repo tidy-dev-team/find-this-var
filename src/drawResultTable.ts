@@ -138,35 +138,32 @@ function getVariableColors(variable: Variable): Array<{
     color: { r: number; g: number; b: number };
   }> = [];
   
-  // Get the collection to access mode names
   const collection = figma.variables.getVariableCollectionById(variable.variableCollectionId);
   
   if (collection) {
     for (const mode of collection.modes) {
       const modeValue = variable.valuesByMode[mode.modeId];
       
-      // Check if it's an RGBA color
-      if (
-        typeof modeValue === "object" &&
-        modeValue !== null &&
-        "r" in modeValue
-      ) {
-        const rgba = modeValue as {
-          r: number;
-          g: number;
-          b: number;
-          a: number;
-        };
+      let resolvedColor: { r: number; g: number; b: number; a: number } | null = null;
+      
+      if (typeof modeValue === "object" && modeValue !== null) {
+        if ("r" in modeValue) {
+          resolvedColor = modeValue as { r: number; g: number; b: number; a: number };
+        } else if ("type" in modeValue && modeValue.type === "VARIABLE_ALIAS") {
+          resolvedColor = resolveVariableAlias(modeValue.id, mode.modeId);
+        }
+      }
+      
+      if (resolvedColor) {
         colors.push({
           modeId: mode.modeId,
           modeName: mode.name,
-          color: { r: rgba.r, g: rgba.g, b: rgba.b },
+          color: { r: resolvedColor.r, g: resolvedColor.g, b: resolvedColor.b },
         });
       }
     }
   }
   
-  // Fallback if no valid colors found
   if (colors.length === 0) {
     colors.push({
       modeId: "default",
@@ -176,6 +173,36 @@ function getVariableColors(variable: Variable): Array<{
   }
   
   return colors;
+}
+
+function resolveVariableAlias(
+  variableId: string,
+  modeId: string,
+  depth: number = 0
+): { r: number; g: number; b: number; a: number } | null {
+  if (depth > 10) {
+    console.warn("Maximum alias resolution depth reached");
+    return null;
+  }
+  
+  try {
+    const aliasedVariable = figma.variables.getVariableById(variableId);
+    if (!aliasedVariable) return null;
+    
+    const aliasedValue = aliasedVariable.valuesByMode[modeId];
+    
+    if (aliasedValue && typeof aliasedValue === "object") {
+      if ("r" in aliasedValue) {
+        return aliasedValue as { r: number; g: number; b: number; a: number };
+      } else if ("type" in aliasedValue && aliasedValue.type === "VARIABLE_ALIAS") {
+        return resolveVariableAlias(aliasedValue.id, modeId, depth + 1);
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to resolve variable alias:`, error);
+  }
+  
+  return null;
 }
 
 /**
