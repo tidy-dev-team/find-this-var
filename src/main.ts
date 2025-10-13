@@ -7,6 +7,7 @@ import {
   FindBoundNodesHandler,
   GetCollectionsHandler,
   GetPagesHandler,
+  CancelSearchHandler,
   ColorVariable,
   VariableCollection,
   Page,
@@ -22,6 +23,9 @@ import {
 } from "./drawResultTable";
 
 export default function () {
+  // PHASE 2: Search cancellation flag
+  let searchCancelled = false;
+
   // No custom navigation needed - using Figma's native hyperlinks only
 
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
@@ -210,6 +214,7 @@ export default function () {
     }) {
       try {
         const { variableIds, pageId } = options;
+        searchCancelled = false; // Reset cancellation flag
 
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables${
@@ -232,15 +237,40 @@ export default function () {
         const results = [];
 
         for (const variableId of variableIds) {
+          if (searchCancelled) {
+            console.log("🛑 Search cancelled by user");
+            break;
+          }
+
           try {
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              const boundNodes = findNodesWithBoundVariable(
+              // PHASE 2: Pass callbacks for progress and streaming (now async)
+              const boundNodes = await findNodesWithBoundVariable(
+                variable,
+                true,
+                pageId,
+                {
+                  onProgress: (current, total, nodesFound) => {
+                    emit("SEARCH_PROGRESS", {
+                      current,
+                      total,
+                      percentage: Math.round((current / total) * 100),
+                      nodesFound,
+                    });
+                  },
+                  onStreamingResult: (result) => {
+                    emit("STREAMING_RESULT", result);
+                  },
+                  shouldCancel: () => searchCancelled,
+                }
+              );
+
+              const summary = await getVariableUsageSummary(
                 variable,
                 true,
                 pageId
               );
-              const summary = getVariableUsageSummary(variable, true, pageId);
 
               results.push({
                 variable,
@@ -302,6 +332,12 @@ export default function () {
       }
     }
   );
+
+  // PHASE 2: Handle search cancellation
+  on<CancelSearchHandler>("CANCEL_SEARCH", function () {
+    console.log("🛑 Cancellation requested by user");
+    searchCancelled = true;
+  });
 
   once<CloseHandler>("CLOSE", function () {
     figma.closePlugin();

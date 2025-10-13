@@ -35,6 +35,35 @@ export interface FindBoundNodesCompleteHandler extends EventHandler {
   handler: () => void;
 }
 
+export interface SearchProgressHandler extends EventHandler {
+  name: "SEARCH_PROGRESS";
+  handler: (progress: {
+    current: number;
+    total: number;
+    percentage: number;
+    nodesFound: number;
+  }) => void;
+}
+
+export interface StreamingResultHandler extends EventHandler {
+  name: "STREAMING_RESULT";
+  handler: (result: {
+    variableId: string;
+    variableName: string;
+    instanceNode: {
+      id: string;
+      name: string;
+      type: string;
+      pageName: string;
+    };
+  }) => void;
+}
+
+export interface CancelSearchHandler extends EventHandler {
+  name: "CANCEL_SEARCH";
+  handler: () => void;
+}
+
 export interface CloseHandler extends EventHandler {
   name: "CLOSE";
   handler: () => void;

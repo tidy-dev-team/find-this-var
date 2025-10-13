@@ -9,17 +9,35 @@ export interface BoundNodeInfo {
   pageName: string;
 }
 
+export interface SearchCallbacks {
+  onProgress?: (current: number, total: number, nodesFound: number) => void;
+  onStreamingResult?: (result: {
+    variableId: string;
+    variableName: string;
+    instanceNode: {
+      id: string;
+      name: string;
+      type: string;
+      pageName: string;
+    };
+  }) => void;
+  shouldCancel?: () => boolean;
+}
+
 /**
  * Recursively traverses all nodes in the document to find where a variable is used
  * @param variable - The variable to search for
  * @param instancesOnly - If true, only search within INSTANCE nodes
+ * @param pageId - Optional page ID to limit search scope
+ * @param callbacks - Optional callbacks for progress, streaming results, and cancellation
  * @returns Array of nodes and properties where the variable is bound
  */
-export function findNodesWithBoundVariable(
+export async function findNodesWithBoundVariable(
   variable: Variable,
   instancesOnly: boolean = false,
-  pageId?: string | null
-): BoundNodeInfo[] {
+  pageId?: string | null,
+  callbacks?: SearchCallbacks
+): Promise<BoundNodeInfo[]> {
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
   const variableKey = variable.key;
@@ -37,6 +55,10 @@ export function findNodesWithBoundVariable(
 
   // Track instances we've already added to avoid adding nested instances
   const processedInstances = new Set<string>();
+
+  // PHASE 2: Progress tracking
+  let nodesProcessed = 0;
+  let totalNodes = 0;
 
   /**
    * Helper function to check if a variable alias matches our target variable
@@ -110,17 +132,40 @@ export function findNodesWithBoundVariable(
 
   /**
    * Recursively check a node and its children for variable bindings
+   * PHASE 2: Added cancellation, progress tracking, and async yielding
    */
-  function checkNode(node: SceneNode): void {
+  async function checkNode(node: SceneNode): Promise<boolean> {
+    // PHASE 2: Check for cancellation
+    if (callbacks?.shouldCancel?.()) {
+      return false; // Signal cancellation
+    }
+
+    // PHASE 2: Update progress and yield to UI thread
+    nodesProcessed++;
+    if (callbacks?.onProgress && totalNodes > 0) {
+      // Update every 10 nodes, or on first/last node
+      if (
+        nodesProcessed % 10 === 0 ||
+        nodesProcessed === 1 ||
+        nodesProcessed === totalNodes
+      ) {
+        const percentage = Math.round((nodesProcessed / totalNodes) * 100);
+        callbacks.onProgress(nodesProcessed, totalNodes, boundNodes.length);
+
+        // Yield to UI thread every 10 nodes to allow progress updates to render
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
     const boundProperties: string[] = [];
 
     try {
       // PHASE 1 OPTIMIZATION: Skip invisible and locked nodes for performance
       if ("visible" in node && node.visible === false) {
-        return; // Skip invisible nodes and their children
+        return true; // Skip invisible nodes and their children
       }
       if ("locked" in node && node.locked === true) {
-        return; // Skip locked nodes and their children
+        return true; // Skip locked nodes and their children
       }
 
       // Check all nodes normally since filtering is done at the root level
@@ -308,6 +353,20 @@ export function findNodesWithBoundVariable(
               propertyPath: getNodePath(topInstance),
               pageName: getNodePage(topInstance),
             });
+
+            // PHASE 2: Emit streaming result
+            if (callbacks?.onStreamingResult) {
+              callbacks.onStreamingResult({
+                variableId: variable.id,
+                variableName: variable.name,
+                instanceNode: {
+                  id: topInstance.id,
+                  name: topInstance.name,
+                  type: topInstance.type,
+                  pageName: getNodePage(topInstance),
+                },
+              });
+            }
           }
         } else {
           // Normal mode - add the node itself
@@ -322,7 +381,12 @@ export function findNodesWithBoundVariable(
 
       // Recursively check children
       if ("children" in node && node.children) {
-        node.children.forEach((child) => checkNode(child));
+        for (const child of node.children) {
+          const shouldContinue = await checkNode(child);
+          if (!shouldContinue) {
+            return false; // Propagate cancellation
+          }
+        }
       }
     } catch (error) {
       // Skip nodes that throw errors during property access
@@ -331,8 +395,9 @@ export function findNodesWithBoundVariable(
         error
       );
     }
-  }
 
+    return true; // Continue processing
+  }
   /**
    * Get the page name where a node is located
    */
@@ -401,35 +466,100 @@ export function findNodesWithBoundVariable(
     return boundNodes;
   }
 
-  const startTime = Date.now();
+  // PHASE 2: Count total nodes for progress tracking
+  function countNodes(node: SceneNode): number {
+    let count = 1;
+    if ("children" in node && node.children) {
+      node.children.forEach((child) => {
+        count += countNodes(child);
+      });
+    }
+    return count;
+  }
 
   pagesToSearch.forEach((page) => {
     if (page.type === "PAGE") {
-      console.log(`  📄 Searching page: "${page.name}" (${page.id})`);
-      if (instancesOnly) {
-        // When instancesOnly is true, only start from instances
-        const findInstancesInNode = (node: SceneNode): void => {
-          if (node.type === "INSTANCE") {
-            checkNode(node);
-          }
-          // Continue searching for instances in children
-          if ("children" in node && node.children) {
-            node.children.forEach((child) => findInstancesInNode(child));
-          }
-        };
-        page.children.forEach((child) => findInstancesInNode(child));
-      } else {
-        // Normal behavior - check all nodes
-        page.children.forEach((child) => checkNode(child));
-      }
+      page.children.forEach((child) => {
+        totalNodes += countNodes(child);
+      });
     }
   });
 
+  console.log(`📊 Total nodes to scan: ${totalNodes}`);
+
+  // PHASE 2: Send initial progress update
+  if (callbacks?.onProgress && totalNodes > 0) {
+    callbacks.onProgress(0, totalNodes, 0);
+  }
+
+  const startTime = Date.now();
+  let cancelled = false;
+
+  for (const page of pagesToSearch) {
+    if (page.type === "PAGE" && !cancelled) {
+      console.log(`  📄 Searching page: "${page.name}" (${page.id})`);
+      if (instancesOnly) {
+        // When instancesOnly is true, only start from instances
+        const findInstancesInNode = async (
+          node: SceneNode
+        ): Promise<boolean> => {
+          if (node.type === "INSTANCE") {
+            const shouldContinue = await checkNode(node);
+            if (!shouldContinue) {
+              cancelled = true;
+              return false;
+            }
+          }
+          // Continue searching for instances in children
+          if ("children" in node && node.children) {
+            for (const child of node.children) {
+              const shouldContinue = await findInstancesInNode(child);
+              if (!shouldContinue) {
+                return false;
+              }
+            }
+          }
+          return true;
+        };
+
+        for (const child of page.children) {
+          const shouldContinue = await findInstancesInNode(child);
+          if (!shouldContinue) {
+            cancelled = true;
+            break;
+          }
+        }
+      } else {
+        // Normal behavior - check all nodes
+        for (const child of page.children) {
+          const shouldContinue = await checkNode(child);
+          if (!shouldContinue) {
+            cancelled = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   const endTime = Date.now();
   const searchTime = endTime - startTime;
-  console.log(
-    `✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes.`
-  );
+
+  // PHASE 2: Send final progress update
+  if (callbacks?.onProgress && totalNodes > 0 && !cancelled) {
+    callbacks.onProgress(totalNodes, totalNodes, boundNodes.length);
+  }
+
+  if (cancelled) {
+    console.log(
+      `⚠️ Search cancelled by user after ${searchTime}ms. Found ${boundNodes.length} nodes so far.`
+    );
+  } else {
+    console.log(
+      `✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes.`
+    );
+  }
+
   console.log(
     `   📊 Performance: Cached ${variableCache.size} variables, ${variableKeyCache.size} keys, ${targetVariableIds.size} target IDs`
   );
@@ -443,12 +573,12 @@ export function findNodesWithBoundVariable(
  * @param instancesOnly - If true, only search within instances
  * @returns Object with usage statistics and node list
  */
-export function getVariableUsageSummary(
+export async function getVariableUsageSummary(
   variable: Variable,
   instancesOnly: boolean = false,
   pageId?: string | null
 ) {
-  const boundNodes = findNodesWithBoundVariable(
+  const boundNodes = await findNodesWithBoundVariable(
     variable,
     instancesOnly,
     pageId
