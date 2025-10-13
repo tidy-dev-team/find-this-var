@@ -77,8 +77,12 @@ function Plugin() {
 
     const unsubscribe4 = on<PagesResultHandler>(
       "PAGES_RESULT",
-      (pages: Page[]) => {
-        setPages(pages);
+      (result: { pages: Page[]; currentPageId: string | null }) => {
+        setPages(result.pages);
+        // PHASE 1 OPTIMIZATION: Default to current page for faster searches
+        if (result.currentPageId && selectedPageId === null) {
+          setSelectedPageId(result.currentPageId);
+        }
       }
     );
 
@@ -190,7 +194,7 @@ function Plugin() {
   ): { color: string; isAlias: boolean } => {
     // Use the default mode's color value for preview
     const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
-    
+
     if (defaultModeValue) {
       // Check if it's an RGBA color
       if (
@@ -220,7 +224,7 @@ function Plugin() {
   const getDisplayValue = (variable: ColorVariable): string => {
     // Use the default mode's value for display
     const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
-    
+
     if (defaultModeValue) {
       // Check if it's an RGBA color
       if (

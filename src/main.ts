@@ -66,10 +66,11 @@ export default function () {
         id: page.id,
         name: page.name,
       }));
-      emit("PAGES_RESULT", pages);
+      // PHASE 1 OPTIMIZATION: Send current page ID for default selection
+      emit("PAGES_RESULT", { pages, currentPageId: figma.currentPage.id });
     } catch (error) {
       console.error("Error fetching pages:", error);
-      emit("PAGES_RESULT", []);
+      emit("PAGES_RESULT", { pages: [], currentPageId: null });
     }
   });
 

@@ -27,10 +27,7 @@ export interface ColorVariablesResultHandler extends EventHandler {
 
 export interface FindBoundNodesHandler extends EventHandler {
   name: "FIND_BOUND_NODES";
-  handler: (options: {
-    variableIds: string[];
-    pageId?: string | null;
-  }) => void;
+  handler: (options: { variableIds: string[]; pageId?: string | null }) => void;
 }
 
 export interface FindBoundNodesCompleteHandler extends EventHandler {
@@ -79,5 +76,5 @@ export interface GetPagesHandler extends EventHandler {
 
 export interface PagesResultHandler extends EventHandler {
   name: "PAGES_RESULT";
-  handler: (pages: Page[]) => void;
+  handler: (result: { pages: Page[]; currentPageId: string | null }) => void;
 }

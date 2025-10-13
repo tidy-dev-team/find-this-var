@@ -24,18 +24,27 @@ export function findNodesWithBoundVariable(
   const variableId = variable.id;
   const variableKey = variable.key;
 
+  // PHASE 1 OPTIMIZATION: Pre-build Set of target variable IDs for fast lookups
+  const targetVariableIds = new Set<string>([variableId]);
+
   // Cache for variable IDs to keys - prevents repeated API calls
   const variableKeyCache = new Map<string, string>();
   variableKeyCache.set(variableId, variableKey);
+
+  // PHASE 1 OPTIMIZATION: Cache variable objects to avoid repeated getVariableById calls
+  const variableCache = new Map<string, Variable>();
+  variableCache.set(variableId, variable);
 
   // Track instances we've already added to avoid adding nested instances
   const processedInstances = new Set<string>();
 
   /**
    * Helper function to check if a variable alias matches our target variable
+   * PHASE 1 OPTIMIZED: Fast Set lookup, then cache-based key comparison
    */
   function isMatchingVariable(boundVar: VariableAlias): boolean {
-    if (boundVar.id === variableId) {
+    // Fast path: Check Set first (O(1) instead of string comparison)
+    if (targetVariableIds.has(boundVar.id)) {
       return true;
     }
 
@@ -45,10 +54,24 @@ export function findNodesWithBoundVariable(
     if (cachedKey === undefined) {
       // Not in cache, fetch once and cache it
       try {
-        const referencedVar = figma.variables.getVariableById(boundVar.id);
+        // Check variable cache first to avoid API call
+        let referencedVar = variableCache.get(boundVar.id);
+        if (!referencedVar) {
+          const fetchedVar = figma.variables.getVariableById(boundVar.id);
+          if (fetchedVar) {
+            referencedVar = fetchedVar;
+            variableCache.set(boundVar.id, fetchedVar);
+          }
+        }
+
         if (referencedVar) {
           cachedKey = referencedVar.key;
           variableKeyCache.set(boundVar.id, cachedKey);
+
+          // If keys match, add to targetVariableIds for even faster future lookups
+          if (cachedKey === variableKey) {
+            targetVariableIds.add(boundVar.id);
+          }
         } else {
           // Cache null result to avoid repeated lookups
           variableKeyCache.set(boundVar.id, "");
@@ -92,6 +115,14 @@ export function findNodesWithBoundVariable(
     const boundProperties: string[] = [];
 
     try {
+      // PHASE 1 OPTIMIZATION: Skip invisible and locked nodes for performance
+      if ("visible" in node && node.visible === false) {
+        return; // Skip invisible nodes and their children
+      }
+      if ("locked" in node && node.locked === true) {
+        return; // Skip locked nodes and their children
+      }
+
       // Check all nodes normally since filtering is done at the root level
 
       // Check fills for variable bindings
@@ -397,7 +428,10 @@ export function findNodesWithBoundVariable(
   const endTime = Date.now();
   const searchTime = endTime - startTime;
   console.log(
-    `✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes. Cached ${variableKeyCache.size} unique variable IDs.`
+    `✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes.`
+  );
+  console.log(
+    `   📊 Performance: Cached ${variableCache.size} variables, ${variableKeyCache.size} keys, ${targetVariableIds.size} target IDs`
   );
 
   return boundNodes;
