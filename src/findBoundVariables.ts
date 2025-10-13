@@ -23,11 +23,11 @@ export function findNodesWithBoundVariable(
   const boundNodes: BoundNodeInfo[] = [];
   const variableId = variable.id;
   const variableKey = variable.key;
-  
+
   // Cache for variable IDs to keys - prevents repeated API calls
   const variableKeyCache = new Map<string, string>();
   variableKeyCache.set(variableId, variableKey);
-  
+
   // Track instances we've already added to avoid adding nested instances
   const processedInstances = new Set<string>();
 
@@ -38,10 +38,10 @@ export function findNodesWithBoundVariable(
     if (boundVar.id === variableId) {
       return true;
     }
-    
+
     // Check cache first
     let cachedKey = variableKeyCache.get(boundVar.id);
-    
+
     if (cachedKey === undefined) {
       // Not in cache, fetch once and cache it
       try {
@@ -51,16 +51,16 @@ export function findNodesWithBoundVariable(
           variableKeyCache.set(boundVar.id, cachedKey);
         } else {
           // Cache null result to avoid repeated lookups
-          variableKeyCache.set(boundVar.id, '');
+          variableKeyCache.set(boundVar.id, "");
           return false;
         }
       } catch (error) {
         // Cache failed lookup
-        variableKeyCache.set(boundVar.id, '');
+        variableKeyCache.set(boundVar.id, "");
         return false;
       }
     }
-    
+
     // Compare keys
     return cachedKey === variableKey;
   }
@@ -71,7 +71,7 @@ export function findNodesWithBoundVariable(
   function findTopLevelInstance(node: SceneNode): InstanceNode | null {
     let topInstance: InstanceNode | null = null;
     let currentNode: BaseNode | null = node;
-    
+
     while (currentNode && currentNode.parent) {
       if (currentNode.type === "INSTANCE") {
         topInstance = currentNode as InstanceNode;
@@ -81,7 +81,7 @@ export function findNodesWithBoundVariable(
       }
       currentNode = currentNode.parent;
     }
-    
+
     return topInstance;
   }
 
@@ -92,160 +92,213 @@ export function findNodesWithBoundVariable(
     const boundProperties: string[] = [];
 
     try {
+      // Check all nodes normally since filtering is done at the root level
 
-    // Check all nodes normally since filtering is done at the root level
-
-    // Check fills for variable bindings
-    if ("fills" in node && node.fills && Array.isArray(node.fills)) {
-      node.fills.forEach((fill, index) => {
-        if (fill.type === "SOLID" && fill.boundVariables?.color) {
-          if (isMatchingVariable(fill.boundVariables.color)) {
-            boundProperties.push(`fills[${index}].color`);
-          }
-        }
-      });
-    }
-
-    // Check strokes for variable bindings
-    if ("strokes" in node && node.strokes && Array.isArray(node.strokes)) {
-      node.strokes.forEach((stroke, index) => {
-        if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
-          if (isMatchingVariable(stroke.boundVariables.color)) {
-            boundProperties.push(`strokes[${index}].color`);
-          }
-        }
-      });
-    }
-
-    // Check basic boundVariables properties that are common across all node types
-    if ("boundVariables" in node && node.boundVariables) {
-      // Width and height (available on most nodes)
-      if (node.boundVariables.width && isMatchingVariable(node.boundVariables.width)) {
-        boundProperties.push("width");
-      }
-      if (node.boundVariables.height && isMatchingVariable(node.boundVariables.height)) {
-        boundProperties.push("height");
-      }
-
-      // Layout properties (auto-layout nodes)
-      if (node.boundVariables.paddingLeft && isMatchingVariable(node.boundVariables.paddingLeft)) {
-        boundProperties.push("paddingLeft");
-      }
-      if (node.boundVariables.paddingRight && isMatchingVariable(node.boundVariables.paddingRight)) {
-        boundProperties.push("paddingRight");
-      }
-      if (node.boundVariables.paddingTop && isMatchingVariable(node.boundVariables.paddingTop)) {
-        boundProperties.push("paddingTop");
-      }
-      if (node.boundVariables.paddingBottom && isMatchingVariable(node.boundVariables.paddingBottom)) {
-        boundProperties.push("paddingBottom");
-      }
-      if (node.boundVariables.itemSpacing && isMatchingVariable(node.boundVariables.itemSpacing)) {
-        boundProperties.push("itemSpacing");
-      }
-      if (node.boundVariables.counterAxisSpacing && isMatchingVariable(node.boundVariables.counterAxisSpacing)) {
-        boundProperties.push("counterAxisSpacing");
-      }
-
-      // Text properties (text nodes only)
-      if (node.type === "TEXT") {
-        if (node.boundVariables.characters && isMatchingVariable(node.boundVariables.characters)) {
-          boundProperties.push("characters");
-        }
-      }
-    }
-
-    // Use Figma's built-in method to get all bound variables for this node
-    // Note: This approach manually checks common bound variable properties
-    // since getBoundVariablesForNode() may not be available in all API versions
-
-    // Check effect properties (shadows, blurs)
-    if ("effects" in node && node.effects && Array.isArray(node.effects)) {
-      node.effects.forEach((effect, index) => {
-        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-          if (effect.boundVariables?.color && isMatchingVariable(effect.boundVariables.color)) {
-            boundProperties.push(`effects[${index}].color`);
-          }
-          if (effect.boundVariables?.offset?.x && isMatchingVariable(effect.boundVariables.offset.x)) {
-            boundProperties.push(`effects[${index}].offset.x`);
-          }
-          if (effect.boundVariables?.offset?.y && isMatchingVariable(effect.boundVariables.offset.y)) {
-            boundProperties.push(`effects[${index}].offset.y`);
-          }
-          if (effect.boundVariables?.radius && isMatchingVariable(effect.boundVariables.radius)) {
-            boundProperties.push(`effects[${index}].radius`);
-          }
-          if (effect.boundVariables?.spread && isMatchingVariable(effect.boundVariables.spread)) {
-            boundProperties.push(`effects[${index}].spread`);
-          }
-        }
-        if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-          if (effect.boundVariables?.radius && isMatchingVariable(effect.boundVariables.radius)) {
-            boundProperties.push(`effects[${index}].radius`);
-          }
-        }
-      });
-    }
-
-    // Check component properties (for instances)
-    if (node.type === "INSTANCE" && "componentProperties" in node) {
-      try {
-        const componentProperties = node.componentProperties;
-        if (componentProperties) {
-          Object.entries(componentProperties).forEach(
-            ([propName, propValue]) => {
-              if (
-                propValue &&
-                typeof propValue === "object" &&
-                "boundVariables" in propValue &&
-                propValue.boundVariables?.value &&
-                isMatchingVariable(propValue.boundVariables.value)
-              ) {
-                boundProperties.push(`componentProperties.${propName}`);
-              }
+      // Check fills for variable bindings
+      if ("fills" in node && node.fills && Array.isArray(node.fills)) {
+        node.fills.forEach((fill, index) => {
+          if (fill.type === "SOLID" && fill.boundVariables?.color) {
+            if (isMatchingVariable(fill.boundVariables.color)) {
+              boundProperties.push(`fills[${index}].color`);
             }
-          );
-        }
-      } catch (error) {
-        // Skip instances with component errors
-        console.warn(`Skipping node ${node.id} due to component property error:`, error);
-      }
-    }
-
-    // If any properties are bound to this variable, add the node to results
-    if (boundProperties.length > 0) {
-      if (instancesOnly) {
-        // Find the top-level instance containing this node
-        // This works whether the node itself is an instance or a child inside an instance
-        const topInstance = findTopLevelInstance(node);
-        
-        if (topInstance && !processedInstances.has(topInstance.id)) {
-          processedInstances.add(topInstance.id);
-          boundNodes.push({
-            node: topInstance,
-            boundProperties,
-            propertyPath: getNodePath(topInstance),
-            pageName: getNodePage(topInstance),
-          });
-        }
-      } else {
-        // Normal mode - add the node itself
-        boundNodes.push({
-          node,
-          boundProperties,
-          propertyPath: getNodePath(node),
-          pageName: getNodePage(node),
+          }
         });
       }
-    }
 
-    // Recursively check children
-    if ("children" in node && node.children) {
-      node.children.forEach((child) => checkNode(child));
-    }
+      // Check strokes for variable bindings
+      if ("strokes" in node && node.strokes && Array.isArray(node.strokes)) {
+        node.strokes.forEach((stroke, index) => {
+          if (stroke.type === "SOLID" && stroke.boundVariables?.color) {
+            if (isMatchingVariable(stroke.boundVariables.color)) {
+              boundProperties.push(`strokes[${index}].color`);
+            }
+          }
+        });
+      }
+
+      // Check basic boundVariables properties that are common across all node types
+      if ("boundVariables" in node && node.boundVariables) {
+        // Width and height (available on most nodes)
+        if (
+          node.boundVariables.width &&
+          isMatchingVariable(node.boundVariables.width)
+        ) {
+          boundProperties.push("width");
+        }
+        if (
+          node.boundVariables.height &&
+          isMatchingVariable(node.boundVariables.height)
+        ) {
+          boundProperties.push("height");
+        }
+
+        // Layout properties (auto-layout nodes)
+        if (
+          node.boundVariables.paddingLeft &&
+          isMatchingVariable(node.boundVariables.paddingLeft)
+        ) {
+          boundProperties.push("paddingLeft");
+        }
+        if (
+          node.boundVariables.paddingRight &&
+          isMatchingVariable(node.boundVariables.paddingRight)
+        ) {
+          boundProperties.push("paddingRight");
+        }
+        if (
+          node.boundVariables.paddingTop &&
+          isMatchingVariable(node.boundVariables.paddingTop)
+        ) {
+          boundProperties.push("paddingTop");
+        }
+        if (
+          node.boundVariables.paddingBottom &&
+          isMatchingVariable(node.boundVariables.paddingBottom)
+        ) {
+          boundProperties.push("paddingBottom");
+        }
+        if (
+          node.boundVariables.itemSpacing &&
+          isMatchingVariable(node.boundVariables.itemSpacing)
+        ) {
+          boundProperties.push("itemSpacing");
+        }
+        if (
+          node.boundVariables.counterAxisSpacing &&
+          isMatchingVariable(node.boundVariables.counterAxisSpacing)
+        ) {
+          boundProperties.push("counterAxisSpacing");
+        }
+
+        // Text properties (text nodes only)
+        if (node.type === "TEXT") {
+          if (
+            node.boundVariables.characters &&
+            isMatchingVariable(node.boundVariables.characters)
+          ) {
+            boundProperties.push("characters");
+          }
+        }
+      }
+
+      // Use Figma's built-in method to get all bound variables for this node
+      // Note: This approach manually checks common bound variable properties
+      // since getBoundVariablesForNode() may not be available in all API versions
+
+      // Check effect properties (shadows, blurs)
+      if ("effects" in node && node.effects && Array.isArray(node.effects)) {
+        node.effects.forEach((effect, index) => {
+          if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+            if (
+              effect.boundVariables?.color &&
+              isMatchingVariable(effect.boundVariables.color)
+            ) {
+              boundProperties.push(`effects[${index}].color`);
+            }
+            if (
+              effect.boundVariables?.offset?.x &&
+              isMatchingVariable(effect.boundVariables.offset.x)
+            ) {
+              boundProperties.push(`effects[${index}].offset.x`);
+            }
+            if (
+              effect.boundVariables?.offset?.y &&
+              isMatchingVariable(effect.boundVariables.offset.y)
+            ) {
+              boundProperties.push(`effects[${index}].offset.y`);
+            }
+            if (
+              effect.boundVariables?.radius &&
+              isMatchingVariable(effect.boundVariables.radius)
+            ) {
+              boundProperties.push(`effects[${index}].radius`);
+            }
+            if (
+              effect.boundVariables?.spread &&
+              isMatchingVariable(effect.boundVariables.spread)
+            ) {
+              boundProperties.push(`effects[${index}].spread`);
+            }
+          }
+          if (
+            effect.type === "LAYER_BLUR" ||
+            effect.type === "BACKGROUND_BLUR"
+          ) {
+            if (
+              effect.boundVariables?.radius &&
+              isMatchingVariable(effect.boundVariables.radius)
+            ) {
+              boundProperties.push(`effects[${index}].radius`);
+            }
+          }
+        });
+      }
+
+      // Check component properties (for instances)
+      if (node.type === "INSTANCE" && "componentProperties" in node) {
+        try {
+          const componentProperties = node.componentProperties;
+          if (componentProperties) {
+            Object.entries(componentProperties).forEach(
+              ([propName, propValue]) => {
+                if (
+                  propValue &&
+                  typeof propValue === "object" &&
+                  "boundVariables" in propValue &&
+                  propValue.boundVariables?.value &&
+                  isMatchingVariable(propValue.boundVariables.value)
+                ) {
+                  boundProperties.push(`componentProperties.${propName}`);
+                }
+              }
+            );
+          }
+        } catch (error) {
+          // Skip instances with component errors
+          console.warn(
+            `Skipping node ${node.id} due to component property error:`,
+            error
+          );
+        }
+      }
+
+      // If any properties are bound to this variable, add the node to results
+      if (boundProperties.length > 0) {
+        if (instancesOnly) {
+          // Find the top-level instance containing this node
+          // This works whether the node itself is an instance or a child inside an instance
+          const topInstance = findTopLevelInstance(node);
+
+          if (topInstance && !processedInstances.has(topInstance.id)) {
+            processedInstances.add(topInstance.id);
+            boundNodes.push({
+              node: topInstance,
+              boundProperties,
+              propertyPath: getNodePath(topInstance),
+              pageName: getNodePage(topInstance),
+            });
+          }
+        } else {
+          // Normal mode - add the node itself
+          boundNodes.push({
+            node,
+            boundProperties,
+            propertyPath: getNodePath(node),
+            pageName: getNodePage(node),
+          });
+        }
+      }
+
+      // Recursively check children
+      if ("children" in node && node.children) {
+        node.children.forEach((child) => checkNode(child));
+      }
     } catch (error) {
       // Skip nodes that throw errors during property access
-      console.warn(`Skipping node ${node.id} (${node.name}) due to error:`, error);
+      console.warn(
+        `Skipping node ${node.id} (${node.name}) due to error:`,
+        error
+      );
     }
   }
 
@@ -302,12 +355,16 @@ export function findNodesWithBoundVariable(
   }
 
   // Start checking from all pages or specific page if pageId is provided
-  const pagesToSearch = pageId 
+  const pagesToSearch = pageId
     ? figma.root.children.filter((page) => page.id === pageId)
     : figma.root.children;
 
-  console.log(`🔍 Searching in ${pagesToSearch.length} page(s)${pageId ? ` (filtered by pageId: ${pageId})` : ' (all pages)'}`);
-  
+  console.log(
+    `🔍 Searching in ${pagesToSearch.length} page(s)${
+      pageId ? ` (filtered by pageId: ${pageId})` : " (all pages)"
+    }`
+  );
+
   if (pageId && pagesToSearch.length === 0) {
     console.warn(`⚠️ No page found with ID: ${pageId}`);
     return boundNodes;
@@ -339,7 +396,9 @@ export function findNodesWithBoundVariable(
 
   const endTime = Date.now();
   const searchTime = endTime - startTime;
-  console.log(`✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes. Cached ${variableKeyCache.size} unique variable IDs.`);
+  console.log(
+    `✅ Search completed in ${searchTime}ms. Found ${boundNodes.length} nodes. Cached ${variableKeyCache.size} unique variable IDs.`
+  );
 
   return boundNodes;
 }
@@ -355,7 +414,11 @@ export function getVariableUsageSummary(
   instancesOnly: boolean = false,
   pageId?: string | null
 ) {
-  const boundNodes = findNodesWithBoundVariable(variable, instancesOnly, pageId);
+  const boundNodes = findNodesWithBoundVariable(
+    variable,
+    instancesOnly,
+    pageId
+  );
 
   const summary = {
     totalNodes: boundNodes.length,
