@@ -216,19 +216,17 @@ export function findNodesWithBoundVariable(
     if (boundProperties.length > 0) {
       if (instancesOnly) {
         // Find the top-level instance containing this node
+        // This works whether the node itself is an instance or a child inside an instance
         const topInstance = findTopLevelInstance(node);
         
-        if (topInstance) {
-          // Only add if we haven't already processed this instance
-          if (!processedInstances.has(topInstance.id)) {
-            processedInstances.add(topInstance.id);
-            boundNodes.push({
-              node: topInstance,
-              boundProperties,
-              propertyPath: getNodePath(topInstance),
-              pageName: getNodePage(topInstance),
-            });
-          }
+        if (topInstance && !processedInstances.has(topInstance.id)) {
+          processedInstances.add(topInstance.id);
+          boundNodes.push({
+            node: topInstance,
+            boundProperties,
+            propertyPath: getNodePath(topInstance),
+            pageName: getNodePage(topInstance),
+          });
         }
       } else {
         // Normal mode - add the node itself
