@@ -53,8 +53,8 @@ export async function findNodesWithBoundVariable(
   const variableCache = new Map<string, Variable>();
   variableCache.set(variableId, variable);
 
-  // Track instances we've already added to avoid adding nested instances
-  const processedInstances = new Set<string>();
+  // Track instance names we've already added to avoid duplicate component instances
+  const processedInstanceNames = new Set<string>();
 
   // PHASE 2: Progress tracking
   let nodesProcessed = 0;
@@ -168,7 +168,9 @@ export async function findNodesWithBoundVariable(
         return true; // Skip locked nodes and their children
       }
 
-      // Check all nodes normally since filtering is done at the root level
+      // When searching for instances, we need to traverse into all instances
+      // to find nested instances, so we don't skip here.
+      // Deduplication happens when adding to results based on top-level instance.
 
       // Check fills for variable bindings
       if ("fills" in node && node.fills && Array.isArray(node.fills)) {
@@ -345,27 +347,29 @@ export async function findNodesWithBoundVariable(
           // This works whether the node itself is an instance or a child inside an instance
           const topInstance = findTopLevelInstance(node);
 
-          if (topInstance && !processedInstances.has(topInstance.id)) {
-            processedInstances.add(topInstance.id);
-            boundNodes.push({
-              node: topInstance,
-              boundProperties,
-              propertyPath: getNodePath(topInstance),
-              pageName: getNodePage(topInstance),
-            });
-
-            // PHASE 2: Emit streaming result
-            if (callbacks?.onStreamingResult) {
-              callbacks.onStreamingResult({
-                variableId: variable.id,
-                variableName: variable.name,
-                instanceNode: {
-                  id: topInstance.id,
-                  name: topInstance.name,
-                  type: topInstance.type,
-                  pageName: getNodePage(topInstance),
-                },
+          if (topInstance) {
+            if (!processedInstanceNames.has(topInstance.name)) {
+              processedInstanceNames.add(topInstance.name);
+              boundNodes.push({
+                node: topInstance,
+                boundProperties,
+                propertyPath: getNodePath(topInstance),
+                pageName: getNodePage(topInstance),
               });
+
+              // PHASE 2: Emit streaming result
+              if (callbacks?.onStreamingResult) {
+                callbacks.onStreamingResult({
+                  variableId: variable.id,
+                  variableName: variable.name,
+                  instanceNode: {
+                    id: topInstance.id,
+                    name: topInstance.name,
+                    type: topInstance.type,
+                    pageName: getNodePage(topInstance),
+                  },
+                });
+              }
             }
           }
         } else {
@@ -561,7 +565,7 @@ export async function findNodesWithBoundVariable(
   }
 
   console.log(
-    `   📊 Performance: Cached ${variableCache.size} variables, ${variableKeyCache.size} keys, ${targetVariableIds.size} target IDs`
+    `   📊 Performance: Cached ${variableCache.size} variables, ${variableKeyCache.size} keys, ${targetVariableIds.size} target IDs, ${processedInstanceNames.size} unique components`
   );
 
   return boundNodes;
