@@ -173,17 +173,13 @@ function Plugin() {
     []
   );
 
-  const handleSelectAll = useCallback(
-    (event: { currentTarget: { checked: boolean } }) => {
-      const checked = event.currentTarget.checked;
-      if (checked) {
-        setSelectedVariables(new Set(filteredVariables.map((v) => v.id)));
-      } else {
-        setSelectedVariables(new Set());
-      }
-    },
-    [filteredVariables]
-  );
+  const handleSelectAll = useCallback(() => {
+    setSelectedVariables(new Set(filteredVariables.map((v) => v.id)));
+  }, [filteredVariables]);
+
+  const handleSelectNone = useCallback(() => {
+    setSelectedVariables(new Set());
+  }, []);
 
   const handleGetSelected = useCallback(() => {
     const selectedVariableIds = Array.from(selectedVariables);
@@ -221,12 +217,7 @@ function Plugin() {
     []
   );
 
-  const isAllSelected =
-    filteredVariables.length > 0 &&
-    filteredVariables.every((v) => selectedVariables.has(v.id));
-  const isPartiallySelected =
-    filteredVariables.some((v) => selectedVariables.has(v.id)) &&
-    !isAllSelected;
+
 
   const formatColor = (rgba: {
     r: number;
@@ -363,12 +354,13 @@ function Plugin() {
             </Text>
           )}
           {filteredVariables.length > 0 && (
-            <div>
-              <div style={{ marginBottom: "8px" }}>
-                <Checkbox onChange={handleSelectAll} value={isAllSelected}>
-                  <Text>Select all ({selectedVariables.size} selected)</Text>
-                </Checkbox>
-              </div>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+              <Button onClick={handleSelectAll} secondary style={{ flex: 1 }}>
+                Select All
+              </Button>
+              <Button onClick={handleSelectNone} secondary style={{ flex: 1 }}>
+                Select None
+              </Button>
             </div>
           )}
           <VerticalSpace space="small" />
