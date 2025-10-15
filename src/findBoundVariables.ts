@@ -149,8 +149,8 @@ export async function findNodesWithBoundVariable(
         nodesProcessed === 1 ||
         nodesProcessed === totalNodes
       ) {
-        const percentage = Math.round((nodesProcessed / totalNodes) * 100);
-        callbacks.onProgress(nodesProcessed, totalNodes, boundNodes.length);
+        const percentage = Math.min(100, Math.round((nodesProcessed / totalNodes) * 100));
+        callbacks.onProgress(Math.min(nodesProcessed, totalNodes), totalNodes, boundNodes.length);
 
         // Yield to UI thread every 10 nodes to allow progress updates to render
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -481,10 +481,23 @@ export async function findNodesWithBoundVariable(
     return count;
   }
 
+  function countInstanceNodes(node: SceneNode): number {
+    let count = 0;
+    if (node.type === "INSTANCE") {
+      count += countNodes(node);
+    }
+    if ("children" in node && node.children) {
+      node.children.forEach((child) => {
+        count += countInstanceNodes(child);
+      });
+    }
+    return count;
+  }
+
   pagesToSearch.forEach((page) => {
     if (page.type === "PAGE") {
       page.children.forEach((child) => {
-        totalNodes += countNodes(child);
+        totalNodes += instancesOnly ? countInstanceNodes(child) : countNodes(child);
       });
     }
   });
