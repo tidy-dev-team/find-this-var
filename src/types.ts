@@ -42,6 +42,9 @@ export interface SearchProgressHandler extends EventHandler {
     total: number;
     percentage: number;
     nodesFound: number;
+    currentVariableName?: string;
+    currentVariableIndex?: number;
+    totalVariables?: number;
   }) => void;
 }
 

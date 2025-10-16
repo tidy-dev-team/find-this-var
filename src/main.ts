@@ -236,7 +236,8 @@ export default function () {
 
         const results = [];
 
-        for (const variableId of variableIds) {
+        for (let i = 0; i < variableIds.length; i++) {
+          const variableId = variableIds[i];
           if (searchCancelled) {
             console.log("🛑 Search cancelled by user");
             break;
@@ -257,6 +258,9 @@ export default function () {
                       total,
                       percentage: Math.round((current / total) * 100),
                       nodesFound,
+                      currentVariableName: variable.name,
+                      currentVariableIndex: i + 1,
+                      totalVariables: variableIds.length,
                     });
                   },
                   onStreamingResult: (result) => {

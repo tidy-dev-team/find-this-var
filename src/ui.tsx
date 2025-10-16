@@ -56,6 +56,9 @@ function Plugin() {
       total: number;
       percentage: number;
       nodesFound: number;
+      currentVariableName?: string;
+      currentVariableIndex?: number;
+      totalVariables?: number;
     } | null>(null);
   const [streamingResults, setStreamingResults] = useState<
     Array<{
@@ -537,6 +540,15 @@ function Plugin() {
                       : "Initializing search..."}
                   </Muted>
                 </Text>
+                {searchProgress?.currentVariableName && 
+                 searchProgress?.currentVariableIndex && 
+                 searchProgress?.totalVariables && (
+                  <Text style={{ marginTop: "5px" }}>
+                    <Muted style={{ fontSize: "11px", fontStyle: "italic" }}>
+                      Searching for: {searchProgress.currentVariableName} ({searchProgress.currentVariableIndex} of {searchProgress.totalVariables})
+                    </Muted>
+                  </Text>
+                )}
               </div>
               <VerticalSpace space="small" />
 
