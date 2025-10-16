@@ -27,14 +27,43 @@ export interface ColorVariablesResultHandler extends EventHandler {
 
 export interface FindBoundNodesHandler extends EventHandler {
   name: "FIND_BOUND_NODES";
-  handler: (options: {
-    variableIds: string[];
-    pageId?: string | null;
-  }) => void;
+  handler: (options: { variableIds: string[]; pageId?: string | null }) => void;
 }
 
 export interface FindBoundNodesCompleteHandler extends EventHandler {
   name: "FIND_BOUND_NODES_COMPLETE";
+  handler: () => void;
+}
+
+export interface SearchProgressHandler extends EventHandler {
+  name: "SEARCH_PROGRESS";
+  handler: (progress: {
+    current: number;
+    total: number;
+    percentage: number;
+    nodesFound: number;
+    currentVariableName?: string;
+    currentVariableIndex?: number;
+    totalVariables?: number;
+  }) => void;
+}
+
+export interface StreamingResultHandler extends EventHandler {
+  name: "STREAMING_RESULT";
+  handler: (result: {
+    variableId: string;
+    variableName: string;
+    instanceNode: {
+      id: string;
+      name: string;
+      type: string;
+      pageName: string;
+    };
+  }) => void;
+}
+
+export interface CancelSearchHandler extends EventHandler {
+  name: "CANCEL_SEARCH";
   handler: () => void;
 }
 
@@ -79,5 +108,5 @@ export interface GetPagesHandler extends EventHandler {
 
 export interface PagesResultHandler extends EventHandler {
   name: "PAGES_RESULT";
-  handler: (pages: Page[]) => void;
+  handler: (result: { pages: Page[]; currentPageId: string | null }) => void;
 }

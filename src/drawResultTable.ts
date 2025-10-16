@@ -189,7 +189,15 @@ function resolveVariableAlias(
     const aliasedVariable = figma.variables.getVariableById(variableId);
     if (!aliasedVariable) return null;
     
-    const aliasedValue = aliasedVariable.valuesByMode[modeId];
+    let aliasedValue = aliasedVariable.valuesByMode[modeId];
+    
+    if (!aliasedValue) {
+      const collection = figma.variables.getVariableCollectionById(aliasedVariable.variableCollectionId);
+      if (collection) {
+        const defaultModeId = collection.defaultModeId;
+        aliasedValue = aliasedVariable.valuesByMode[defaultModeId];
+      }
+    }
     
     if (aliasedValue && typeof aliasedValue === "object") {
       if ("r" in aliasedValue) {

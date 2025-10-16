@@ -7,6 +7,7 @@ import {
   FindBoundNodesHandler,
   GetCollectionsHandler,
   GetPagesHandler,
+  CancelSearchHandler,
   ColorVariable,
   VariableCollection,
   Page,
@@ -22,6 +23,9 @@ import {
 } from "./drawResultTable";
 
 export default function () {
+  // PHASE 2: Search cancellation flag
+  let searchCancelled = false;
+
   // No custom navigation needed - using Figma's native hyperlinks only
 
   once<CreateRectanglesHandler>("CREATE_RECTANGLES", function (count: number) {
@@ -66,10 +70,11 @@ export default function () {
         id: page.id,
         name: page.name,
       }));
-      emit("PAGES_RESULT", pages);
+      // PHASE 1 OPTIMIZATION: Send current page ID for default selection
+      emit("PAGES_RESULT", { pages, currentPageId: figma.currentPage.id });
     } catch (error) {
       console.error("Error fetching pages:", error);
-      emit("PAGES_RESULT", []);
+      emit("PAGES_RESULT", { pages: [], currentPageId: null });
     }
   });
 
@@ -92,8 +97,13 @@ export default function () {
         // Helper function to resolve variable alias
         const resolveVariableValue = (
           value: any,
-          modeId: string
+          modeId: string,
+          depth: number = 0
         ): RGBA | string => {
+          if (depth > 10) {
+            return "Circular reference";
+          }
+          
           if (typeof value === "object" && value !== null && "r" in value) {
             return value as RGBA;
           } else if (
@@ -110,13 +120,31 @@ export default function () {
                 referencedVariable &&
                 referencedVariable.resolvedType === "COLOR"
               ) {
-                const referencedValue = referencedVariable.valuesByMode[modeId];
+                let referencedValue = referencedVariable.valuesByMode[modeId];
+                
+                if (!referencedValue) {
+                  const collection = figma.variables.getVariableCollectionById(
+                    referencedVariable.variableCollectionId
+                  );
+                  if (collection) {
+                    const defaultModeId = collection.defaultModeId;
+                    referencedValue = referencedVariable.valuesByMode[defaultModeId];
+                  }
+                }
+                
                 if (
                   typeof referencedValue === "object" &&
                   referencedValue !== null &&
                   "r" in referencedValue
                 ) {
                   return referencedValue as RGBA;
+                } else if (
+                  typeof referencedValue === "object" &&
+                  referencedValue !== null &&
+                  "type" in referencedValue &&
+                  referencedValue.type === "VARIABLE_ALIAS"
+                ) {
+                  return resolveVariableValue(referencedValue, modeId, depth + 1);
                 } else {
                   return `→ ${referencedVariable.name}`;
                 }
@@ -209,6 +237,7 @@ export default function () {
     }) {
       try {
         const { variableIds, pageId } = options;
+        searchCancelled = false; // Reset cancellation flag
 
         console.log(
           `🔍 Finding bound nodes for ${variableIds.length} selected variables${
@@ -230,16 +259,45 @@ export default function () {
 
         const results = [];
 
-        for (const variableId of variableIds) {
+        for (let i = 0; i < variableIds.length; i++) {
+          const variableId = variableIds[i];
+          if (searchCancelled) {
+            console.log("🛑 Search cancelled by user");
+            break;
+          }
+
           try {
             const variable = figma.variables.getVariableById(variableId);
             if (variable) {
-              const boundNodes = findNodesWithBoundVariable(
+              // PHASE 2: Pass callbacks for progress and streaming (now async)
+              const boundNodes = await findNodesWithBoundVariable(
+                variable,
+                true,
+                pageId,
+                {
+                  onProgress: (current, total, nodesFound) => {
+                    emit("SEARCH_PROGRESS", {
+                      current,
+                      total,
+                      percentage: Math.round((current / total) * 100),
+                      nodesFound,
+                      currentVariableName: variable.name,
+                      currentVariableIndex: i + 1,
+                      totalVariables: variableIds.length,
+                    });
+                  },
+                  onStreamingResult: (result) => {
+                    emit("STREAMING_RESULT", result);
+                  },
+                  shouldCancel: () => searchCancelled,
+                }
+              );
+
+              const summary = await getVariableUsageSummary(
                 variable,
                 true,
                 pageId
               );
-              const summary = getVariableUsageSummary(variable, true, pageId);
 
               results.push({
                 variable,
@@ -301,6 +359,12 @@ export default function () {
       }
     }
   );
+
+  // PHASE 2: Handle search cancellation
+  on<CancelSearchHandler>("CANCEL_SEARCH", function () {
+    console.log("🛑 Cancellation requested by user");
+    searchCancelled = true;
+  });
 
   once<CloseHandler>("CLOSE", function () {
     figma.closePlugin();

@@ -23,6 +23,9 @@ import {
   ColorVariablesResultHandler,
   FindBoundNodesHandler,
   FindBoundNodesCompleteHandler,
+  SearchProgressHandler,
+  StreamingResultHandler,
+  CancelSearchHandler,
   GetCollectionsHandler,
   CollectionsResultHandler,
   GetPagesHandler,
@@ -45,6 +48,30 @@ function Plugin() {
     useState<string | null>(null);
   const [pages, setPages] = useState<Page[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+
+  // PHASE 2: Progress tracking state
+  const [searchProgress, setSearchProgress] =
+    useState<{
+      current: number;
+      total: number;
+      percentage: number;
+      nodesFound: number;
+      currentVariableName?: string;
+      currentVariableIndex?: number;
+      totalVariables?: number;
+    } | null>(null);
+  const [streamingResults, setStreamingResults] = useState<
+    Array<{
+      variableId: string;
+      variableName: string;
+      instanceNode: {
+        id: string;
+        name: string;
+        type: string;
+        pageName: string;
+      };
+    }>
+  >([]);
 
   useEffect(() => {
     emit<GetCollectionsHandler>("GET_COLLECTIONS");
@@ -72,13 +99,34 @@ function Plugin() {
       "FIND_BOUND_NODES_COMPLETE",
       () => {
         setIsSearching(false);
+        setSearchProgress(null);
       }
     );
 
     const unsubscribe4 = on<PagesResultHandler>(
       "PAGES_RESULT",
-      (pages: Page[]) => {
-        setPages(pages);
+      (result: { pages: Page[]; currentPageId: string | null }) => {
+        setPages(result.pages);
+        // PHASE 1 OPTIMIZATION: Default to current page for faster searches
+        if (result.currentPageId && selectedPageId === null) {
+          setSelectedPageId(result.currentPageId);
+        }
+      }
+    );
+
+    // PHASE 2: Progress tracking listener
+    const unsubscribe5 = on<SearchProgressHandler>(
+      "SEARCH_PROGRESS",
+      (progress) => {
+        setSearchProgress(progress);
+      }
+    );
+
+    // PHASE 2: Streaming results listener
+    const unsubscribe6 = on<StreamingResultHandler>(
+      "STREAMING_RESULT",
+      (result) => {
+        setStreamingResults((prev) => [...prev, result]);
       }
     );
 
@@ -87,6 +135,8 @@ function Plugin() {
       unsubscribe2();
       unsubscribe3();
       unsubscribe4();
+      unsubscribe5();
+      unsubscribe6();
     };
   }, []);
 
@@ -126,17 +176,13 @@ function Plugin() {
     []
   );
 
-  const handleSelectAll = useCallback(
-    (event: { currentTarget: { checked: boolean } }) => {
-      const checked = event.currentTarget.checked;
-      if (checked) {
-        setSelectedVariables(new Set(filteredVariables.map((v) => v.id)));
-      } else {
-        setSelectedVariables(new Set());
-      }
-    },
-    [filteredVariables]
-  );
+  const handleSelectAll = useCallback(() => {
+    setSelectedVariables(new Set(filteredVariables.map((v) => v.id)));
+  }, [filteredVariables]);
+
+  const handleSelectNone = useCallback(() => {
+    setSelectedVariables(new Set());
+  }, []);
 
   const handleGetSelected = useCallback(() => {
     const selectedVariableIds = Array.from(selectedVariables);
@@ -145,12 +191,20 @@ function Plugin() {
         `🚀 Finding bound nodes for ${selectedVariableIds.length} selected variables...`
       );
       setIsSearching(true);
+      setSearchProgress(null);
+      setStreamingResults([]);
       emit<FindBoundNodesHandler>("FIND_BOUND_NODES", {
         variableIds: selectedVariableIds,
         pageId: selectedPageId,
       });
     }
   }, [selectedVariables, selectedPageId]);
+
+  const handleCancelSearch = useCallback(() => {
+    emit<CancelSearchHandler>("CANCEL_SEARCH");
+    setIsSearching(false);
+    setSearchProgress(null);
+  }, []);
 
   const handleCollectionChange = useCallback(
     (event: { currentTarget: { value: string } }) => {
@@ -166,12 +220,7 @@ function Plugin() {
     []
   );
 
-  const isAllSelected =
-    filteredVariables.length > 0 &&
-    filteredVariables.every((v) => selectedVariables.has(v.id));
-  const isPartiallySelected =
-    filteredVariables.some((v) => selectedVariables.has(v.id)) &&
-    !isAllSelected;
+
 
   const formatColor = (rgba: {
     r: number;
@@ -190,7 +239,7 @@ function Plugin() {
   ): { color: string; isAlias: boolean } => {
     // Use the default mode's color value for preview
     const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
-    
+
     if (defaultModeValue) {
       // Check if it's an RGBA color
       if (
@@ -220,7 +269,7 @@ function Plugin() {
   const getDisplayValue = (variable: ColorVariable): string => {
     // Use the default mode's value for display
     const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
-    
+
     if (defaultModeValue) {
       // Check if it's an RGBA color
       if (
@@ -308,12 +357,13 @@ function Plugin() {
             </Text>
           )}
           {filteredVariables.length > 0 && (
-            <div>
-              <div style={{ marginBottom: "8px" }}>
-                <Checkbox onChange={handleSelectAll} value={isAllSelected}>
-                  <Text>Select all ({selectedVariables.size} selected)</Text>
-                </Checkbox>
-              </div>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+              <Button onClick={handleSelectAll} secondary style={{ flex: 1 }}>
+                Select All
+              </Button>
+              <Button onClick={handleSelectNone} secondary style={{ flex: 1 }}>
+                Select None
+              </Button>
             </div>
           )}
           <VerticalSpace space="small" />
@@ -456,8 +506,81 @@ function Plugin() {
               ? "Searching..."
               : `Find Bound Nodes (${selectedVariables.size} selected)`}
           </Button>
+
+          {/* PHASE 2: Progress and Cancel UI */}
           {isSearching && (
             <Fragment>
+              <VerticalSpace space="small" />
+
+              {/* Progress bar - always show when searching */}
+              <div style={{ width: "100%" }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: "8px",
+                    backgroundColor: "#e0e0e0",
+                    borderRadius: "4px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${searchProgress?.percentage || 0}%`,
+                      height: "100%",
+                      backgroundColor: "#2196f3",
+                      transition: "width 0.2s ease",
+                    }}
+                  ></div>
+                </div>
+                <VerticalSpace space="extraSmall" />
+                <Text>
+                  <Muted>
+                    {searchProgress
+                      ? `${searchProgress.percentage}% (${searchProgress.current}/${searchProgress.total} nodes) - Found: ${searchProgress.nodesFound}`
+                      : "Initializing search..."}
+                  </Muted>
+                </Text>
+                {searchProgress?.currentVariableName && 
+                 searchProgress?.currentVariableIndex && 
+                 searchProgress?.totalVariables && (
+                  <Text style={{ marginTop: "5px" }}>
+                    <Muted style={{ fontSize: "11px", fontStyle: "italic" }}>
+                      Searching for: {searchProgress.currentVariableName} ({searchProgress.currentVariableIndex} of {searchProgress.totalVariables})
+                    </Muted>
+                  </Text>
+                )}
+              </div>
+              <VerticalSpace space="small" />
+
+              {/* Streaming results preview */}
+              {streamingResults.length > 0 && (
+                <Fragment>
+                  <div
+                    style={{
+                      maxHeight: "100px",
+                      overflowY: "auto",
+                      fontSize: "11px",
+                      padding: "8px",
+                      backgroundColor: "#f5f5f5",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {streamingResults.slice(-5).map((result, idx) => (
+                      <div key={idx} style={{ marginBottom: "4px" }}>
+                        ✓ {result.instanceNode.name} (
+                        {result.instanceNode.pageName})
+                      </div>
+                    ))}
+                  </div>
+                  <VerticalSpace space="small" />
+                </Fragment>
+              )}
+
+              {/* Cancel button */}
+              <Button fullWidth onClick={handleCancelSearch} danger>
+                Cancel Search
+              </Button>
+
               <VerticalSpace space="small" />
               <div
                 style={{
