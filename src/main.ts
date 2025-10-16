@@ -97,8 +97,13 @@ export default function () {
         // Helper function to resolve variable alias
         const resolveVariableValue = (
           value: any,
-          modeId: string
+          modeId: string,
+          depth: number = 0
         ): RGBA | string => {
+          if (depth > 10) {
+            return "Circular reference";
+          }
+          
           if (typeof value === "object" && value !== null && "r" in value) {
             return value as RGBA;
           } else if (
@@ -115,13 +120,31 @@ export default function () {
                 referencedVariable &&
                 referencedVariable.resolvedType === "COLOR"
               ) {
-                const referencedValue = referencedVariable.valuesByMode[modeId];
+                let referencedValue = referencedVariable.valuesByMode[modeId];
+                
+                if (!referencedValue) {
+                  const collection = figma.variables.getVariableCollectionById(
+                    referencedVariable.variableCollectionId
+                  );
+                  if (collection) {
+                    const defaultModeId = collection.defaultModeId;
+                    referencedValue = referencedVariable.valuesByMode[defaultModeId];
+                  }
+                }
+                
                 if (
                   typeof referencedValue === "object" &&
                   referencedValue !== null &&
                   "r" in referencedValue
                 ) {
                   return referencedValue as RGBA;
+                } else if (
+                  typeof referencedValue === "object" &&
+                  referencedValue !== null &&
+                  "type" in referencedValue &&
+                  referencedValue.type === "VARIABLE_ALIAS"
+                ) {
+                  return resolveVariableValue(referencedValue, modeId, depth + 1);
                 } else {
                   return `→ ${referencedVariable.name}`;
                 }
