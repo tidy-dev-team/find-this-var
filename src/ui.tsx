@@ -236,34 +236,29 @@ function Plugin() {
 
   const getColorPreview = (
     variable: ColorVariable
-  ): { color: string; isAlias: boolean } => {
-    // Use the default mode's color value for preview
+  ): { color: string; hexValue: string } => {
     const defaultModeValue = variable.valuesByMode[variable.defaultModeId];
 
     if (defaultModeValue) {
-      // Check if it's an RGBA color
       if (
         typeof defaultModeValue === "object" &&
         defaultModeValue !== null &&
         "r" in defaultModeValue
       ) {
+        const rgba = defaultModeValue as { r: number; g: number; b: number; a: number };
+        const r = Math.round(rgba.r * 255);
+        const g = Math.round(rgba.g * 255);
+        const b = Math.round(rgba.b * 255);
+        const toHex = (n: number) => n.toString(16).padStart(2, '0');
+        const hex = `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+        
         return {
-          color: formatColor(
-            defaultModeValue as { r: number; g: number; b: number; a: number }
-          ),
-          isAlias: false,
-        };
-      }
-
-      // If it's a string (variable alias), return a default color but mark as alias
-      if (typeof defaultModeValue === "string") {
-        return {
-          color: "#cccccc", // Light gray for aliases
-          isAlias: true,
+          color: formatColor(rgba),
+          hexValue: hex,
         };
       }
     }
-    return { color: "#000000", isAlias: false };
+    return { color: "rgb(200, 200, 200)", hexValue: "#CCCCCC" };
   };
 
   const getDisplayValue = (variable: ColorVariable): string => {
@@ -373,14 +368,14 @@ function Plugin() {
               overflowY: "auto",
               minHeight: 0,
               border: "1px solid #e0e0e0",
-              borderRadius: "4px",
-              padding: "4px",
+              borderRadius: "6px",
+              padding: "8px",
+              backgroundColor: "#fafafa",
             }}
           >
             {filteredVariables.length > 0 ? (
               filteredVariables.map((variable) => {
                 const preview = getColorPreview(variable);
-                const displayValue = getDisplayValue(variable);
                 const isSelected = selectedVariables.has(variable.id);
                 return (
                   <div
@@ -388,14 +383,16 @@ function Plugin() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      marginBottom: "4px",
-                      padding: "8px",
-                      borderRadius: "4px",
-                      backgroundColor: isSelected ? "#e3f2fd" : "#f0f0f0",
+                      marginBottom: "6px",
+                      padding: "10px 12px",
+                      borderRadius: "6px",
+                      backgroundColor: isSelected ? "#e3f2fd" : "white",
                       border: isSelected
-                        ? "1px solid #2196f3"
-                        : "1px solid transparent",
+                        ? "2px solid #2196f3"
+                        : "1px solid #e0e0e0",
                       cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      boxShadow: isSelected ? "0 2px 4px rgba(33, 150, 243, 0.1)" : "none",
                     }}
                     onClick={() =>
                       handleVariableSelect(variable.id, !isSelected)
@@ -409,37 +406,37 @@ function Plugin() {
                         )
                       }
                       value={isSelected}
-                      style={{ marginRight: "8px" }}
+                      style={{ marginRight: "10px", flexShrink: 0 }}
                     >
                       <span></span>
                     </Checkbox>
                     <div
                       style={{
-                        width: "20px",
-                        height: "20px",
+                        width: "32px",
+                        height: "32px",
                         backgroundColor: preview.color,
-                        borderRadius: "3px",
-                        marginRight: "8px",
-                        border: "1px solid #ccc",
-                        // Add diagonal stripes pattern for aliases
-                        backgroundImage: preview.isAlias
-                          ? "repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)"
-                          : "none",
+                        borderRadius: "4px",
+                        marginRight: "12px",
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        flexShrink: 0,
+                        boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
                       }}
                     ></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
                           fontSize: "12px",
-                          fontWeight: "bold",
+                          fontWeight: "600",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
+                          marginBottom: "3px",
+                          color: "#333",
                         }}
                       >
                         {variable.name}
                         {!variable.isLocal && (
-                          <span style={{ color: "#888", fontWeight: "normal" }}>
+                          <span style={{ color: "#999", fontWeight: "normal", fontSize: "11px" }}>
                             {" "}
                             (external
                             {variable.libraryName
@@ -451,14 +448,12 @@ function Plugin() {
                       </div>
                       <div
                         style={{
-                          fontSize: "10px",
+                          fontSize: "11px",
                           color: "#666",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          fontFamily: "monospace",
                         }}
                       >
-                        {displayValue}
+                        {preview.hexValue}
                       </div>
                     </div>
                   </div>
